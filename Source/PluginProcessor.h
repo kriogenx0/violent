@@ -1,0 +1,117 @@
+#pragma once
+#include <JuceHeader.h>
+
+static constexpr int NUM_EQ_BANDS = 10;
+
+namespace ParamIDs
+{
+    static constexpr auto EQ_ENABLED      = "eq_enabled";
+    static constexpr auto EQ_BAND_0       = "eq_band_0";
+    static constexpr auto EQ_BAND_1       = "eq_band_1";
+    static constexpr auto EQ_BAND_2       = "eq_band_2";
+    static constexpr auto EQ_BAND_3       = "eq_band_3";
+    static constexpr auto EQ_BAND_4       = "eq_band_4";
+    static constexpr auto EQ_BAND_5       = "eq_band_5";
+    static constexpr auto EQ_BAND_6       = "eq_band_6";
+    static constexpr auto EQ_BAND_7       = "eq_band_7";
+    static constexpr auto EQ_BAND_8       = "eq_band_8";
+    static constexpr auto EQ_BAND_9       = "eq_band_9";
+
+    static constexpr auto REVERB_ENABLED  = "reverb_enabled";
+    static constexpr auto REVERB_ROOM     = "reverb_room";
+    static constexpr auto REVERB_DAMPING  = "reverb_damping";
+    static constexpr auto REVERB_WET      = "reverb_wet";
+    static constexpr auto REVERB_WIDTH    = "reverb_width";
+
+    static constexpr auto DIST_ENABLED    = "dist_enabled";
+    static constexpr auto DIST_DRIVE      = "dist_drive";
+    static constexpr auto DIST_TONE       = "dist_tone";
+    static constexpr auto DIST_LEVEL      = "dist_level";
+    static constexpr auto DIST_TYPE       = "dist_type";
+
+    static constexpr auto COMP_ENABLED    = "comp_enabled";
+    static constexpr auto COMP_THRESHOLD  = "comp_threshold";
+    static constexpr auto COMP_RATIO      = "comp_ratio";
+    static constexpr auto COMP_ATTACK     = "comp_attack";
+    static constexpr auto COMP_RELEASE    = "comp_release";
+    static constexpr auto COMP_MAKEUP     = "comp_makeup";
+
+    static constexpr auto GATE_ENABLED    = "gate_enabled";
+    static constexpr auto GATE_THRESHOLD  = "gate_threshold";
+    static constexpr auto GATE_ATTACK     = "gate_attack";
+    static constexpr auto GATE_RELEASE    = "gate_release";
+    static constexpr auto GATE_RATIO      = "gate_ratio";
+}
+
+class ViolentAudioProcessor  : public juce::AudioProcessor,
+                                public juce::AudioProcessorValueTreeState::Listener
+{
+public:
+    ViolentAudioProcessor();
+    ~ViolentAudioProcessor() override;
+
+    void prepareToPlay (double sampleRate, int samplesPerBlock) override;
+    void releaseResources() override;
+
+   #ifndef JucePlugin_PreferredChannelConfigurations
+    bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
+   #endif
+
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+    juce::AudioProcessorEditor* createEditor() override;
+    bool hasEditor() const override { return true; }
+
+    const juce::String getName() const override { return JucePlugin_Name; }
+    bool acceptsMidi() const override  { return false; }
+    bool producesMidi() const override { return false; }
+    bool isMidiEffect() const override { return false; }
+    double getTailLengthSeconds() const override { return 2.0; }
+
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return "Default"; }
+    void changeProgramName (int, const juce::String&) override {}
+
+    void getStateInformation (juce::MemoryBlock& destData) override;
+    void setStateInformation (const void* data, int sizeInBytes) override;
+
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
+
+    juce::AudioProcessorValueTreeState apvts;
+
+private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    void updateDSP();
+    void updateEQ();
+    void updateDistortion();
+    void updateCompressor();
+    void updateGate();
+    void updateReverb();
+
+    static constexpr float EQ_FREQUENCIES[NUM_EQ_BANDS] = {
+        31.25f, 62.5f, 125.0f, 250.0f, 500.0f,
+        1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f
+    };
+    static constexpr float EQ_Q = 1.41421356f;
+
+    using StereoFilter = juce::dsp::ProcessorDuplicator<
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Coefficients<float>::Ptr>;
+
+    std::array<StereoFilter, NUM_EQ_BANDS> eqBands;
+    StereoFilter distToneFilter;
+
+    juce::dsp::Compressor<float>  compressor;
+    juce::dsp::Gain<float>        makeupGain;
+    juce::dsp::NoiseGate<float>   noiseGate;
+    juce::dsp::Reverb             reverb;
+
+    juce::dsp::ProcessSpec processSpec { 44100.0, 512, 2 };
+    bool prepared = false;
+    std::atomic<bool> paramsDirty { true };
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ViolentAudioProcessor)
+};
