@@ -4,7 +4,7 @@ NINJA       := ninja
 AU_DEST     := $(HOME)/Library/Audio/Plug-Ins/Components
 VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
 
-.PHONY: all configure build install install-au install-vst3 clean wipe help
+.PHONY: all configure build install install-au install-vst3 clean wipe dependency-check help
 
 ## Default: configure (if needed) then build
 all: build
@@ -54,6 +54,17 @@ clean:
 wipe:
 	rm -rf $(BUILD_DIR)
 
+## Check that required build tools are installed
+dependency-check:
+	@echo "Checking dependencies..."
+	@command -v cmake  >/dev/null 2>&1 || { echo "  ✗ cmake not found  →  brew install cmake";  exit 1; }
+	@command -v ninja  >/dev/null 2>&1 || { echo "  ✗ ninja not found  →  brew install ninja";  exit 1; }
+	@command -v git    >/dev/null 2>&1 || { echo "  ✗ git not found    →  xcode-select --install"; exit 1; }
+	@echo "  cmake  $(shell cmake --version | head -1)"
+	@echo "  ninja  $(shell ninja --version)"
+	@echo "  git    $(shell git --version)"
+	@echo "All dependencies satisfied."
+
 ## Ensure build dir exists and CMake has been run
 $(BUILD_DIR)/build.ninja:
 	$(MAKE) configure
@@ -68,6 +79,7 @@ help:
 	@echo "  make build                 compile"
 	@echo "  make setup-and-build       configure + build (Debug)"
 	@echo "  make setup-and-build-release  configure + build (Release)"
+	@echo "  make dependency-check          check cmake / ninja / git are installed"
 	@echo "  make install-au            copy .component to ~/Library"
 	@echo "  make install-vst3          copy .vst3 to ~/Library"
 	@echo "  make install               install both AU and VST3"
