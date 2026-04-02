@@ -15,24 +15,25 @@ FetchContent_MakeAvailable(JUCE)
 juce_add_plugin(Violent
     COMPANY_NAME            "Violent Audio"
     BUNDLE_ID               "com.violentaudio.violent"
-    IS_SYNTH                FALSE
-    NEEDS_MIDI_INPUT        FALSE
+    IS_SYNTH                TRUE
+    NEEDS_MIDI_INPUT        TRUE
     NEEDS_MIDI_OUTPUT       FALSE
     IS_MIDI_EFFECT          FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD FALSE
     PLUGIN_MANUFACTURER_CODE VlAu
-    PLUGIN_CODE             Vlnt
+    PLUGIN_CODE             Vlns
     FORMATS                 AU VST3 Standalone
     PRODUCT_NAME            "Violent"
-    AU_MAIN_TYPE            kAudioUnitType_Effect
-    VST3_CATEGORIES         "Fx"
+    AU_MAIN_TYPE            kAudioUnitType_MusicDevice
+    VST3_CATEGORIES         "Instrument|Synth"
 )
 
 target_sources(Violent
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
+        Source/SynthEngine.h
 )
 
 target_compile_definitions(Violent
