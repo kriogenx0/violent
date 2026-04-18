@@ -6,8 +6,8 @@ VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
 
 .PHONY: all configure build install install-au install-vst3 clean wipe dependency-check help
 
-## Default: configure (if needed) then build
-all: build
+## Default: check dependencies, configure (if needed) then build
+all: dependency-check build
 
 ## Step 1 – Generate the build system with CMake + Ninja
 configure:
