@@ -8,9 +8,13 @@ include(FetchContent)
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG        8.0.7
+    GIT_TAG        7.0.9
 )
 FetchContent_MakeAvailable(JUCE)
+
+# Suppress deprecation warnings from JUCE's own sources (e.g. CVDisplayLink on macOS 14+)
+set_property(DIRECTORY "${juce_SOURCE_DIR}" APPEND PROPERTY
+    COMPILE_OPTIONS "-Wno-deprecated-declarations")
 
 juce_add_plugin(Violent
     COMPANY_NAME            "Violent Audio"
