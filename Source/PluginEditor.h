@@ -3,7 +3,7 @@
 #include "PluginProcessor.h"
 
 //==============================================================================
-namespace Colours
+namespace ViolentColours
 {
     static const juce::Colour background  { 0xff1e1e2e };
     static const juce::Colour surface     { 0xff313244 };
@@ -52,7 +52,7 @@ public:
     juce::Label  nameLabel;
     juce::Label  valueLabel;
 
-    LabelledKnob (const juce::String& name, juce::Colour colour = Colours::accent);
+    LabelledKnob (const juce::String& name, juce::Colour colour = ViolentColours::accent);
 
     void resized() override;
     void paint (juce::Graphics&) override {}
@@ -81,12 +81,12 @@ private:
     juce::ComboBox     waveBox;
     juce::Label        waveLabel;
 
-    LabelledKnob gainKnob    { "Gain",    Colours::accent  };
-    LabelledKnob detuneKnob  { "Detune",  Colours::yellow  };
-    LabelledKnob attackKnob  { "Attack",  Colours::green   };
-    LabelledKnob decayKnob   { "Decay",   Colours::teal    };
-    LabelledKnob sustainKnob { "Sustain", Colours::blue    };
-    LabelledKnob releaseKnob { "Release", Colours::red     };
+    LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
+    LabelledKnob detuneKnob  { "Detune",  ViolentColours::yellow  };
+    LabelledKnob attackKnob  { "Attack",  ViolentColours::green   };
+    LabelledKnob decayKnob   { "Decay",   ViolentColours::teal    };
+    LabelledKnob sustainKnob { "Sustain", ViolentColours::blue    };
+    LabelledKnob releaseKnob { "Release", ViolentColours::red     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   enableAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveAtt;
@@ -116,8 +116,8 @@ private:
     juce::ComboBox     typeBox;
     juce::Label        typeLabel;
 
-    LabelledKnob cutoffKnob    { "Cutoff",    Colours::blue   };
-    LabelledKnob resonanceKnob { "Resonance", Colours::accent };
+    LabelledKnob cutoffKnob    { "Cutoff",    ViolentColours::blue   };
+    LabelledKnob resonanceKnob { "Resonance", ViolentColours::accent };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   enableAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> typeAtt;
@@ -151,8 +151,8 @@ private:
     juce::ComboBox     tgtSlotBox;
     juce::Label        tgtSlotLabel;
 
-    LabelledKnob rateKnob  { "Rate",  Colours::teal   };
-    LabelledKnob depthKnob { "Depth", Colours::accent };
+    LabelledKnob rateKnob  { "Rate",  ViolentColours::teal   };
+    LabelledKnob depthKnob { "Depth", ViolentColours::accent };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   enableAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
@@ -186,11 +186,11 @@ private:
 
     juce::Slider rootSlider;
     juce::Label  rootLabel;
-    LabelledKnob gainKnob    { "Gain",    Colours::accent  };
-    LabelledKnob attackKnob  { "Attack",  Colours::green   };
-    LabelledKnob decayKnob   { "Decay",   Colours::teal    };
-    LabelledKnob sustainKnob { "Sustain", Colours::blue    };
-    LabelledKnob releaseKnob { "Release", Colours::red     };
+    LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
+    LabelledKnob attackKnob  { "Attack",  ViolentColours::green   };
+    LabelledKnob decayKnob   { "Decay",   ViolentColours::teal    };
+    LabelledKnob sustainKnob { "Sustain", ViolentColours::blue    };
+    LabelledKnob releaseKnob { "Release", ViolentColours::red     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>  enableAtt, loopAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
@@ -209,7 +209,7 @@ class SampleTabPanel : public juce::Component
 public:
     explicit SampleTabPanel (ViolentAudioProcessor& p);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (Colours::background); }
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
 private:
     std::array<SampleStrip, MAX_SAMPLES> strips;
@@ -223,7 +223,7 @@ class SynthTabPanel : public juce::Component
 public:
     explicit SynthTabPanel (ViolentAudioProcessor& p);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (Colours::background); }
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
 private:
     std::array<SynthStrip, MAX_SYNTHS> strips;
@@ -236,7 +236,7 @@ class FilterTabPanel : public juce::Component
 public:
     explicit FilterTabPanel (ViolentAudioProcessor& p);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (Colours::background); }
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
 private:
     std::array<FilterStrip, MAX_FILTERS> strips;
@@ -249,7 +249,7 @@ class ModTabPanel : public juce::Component
 public:
     explicit ModTabPanel (ViolentAudioProcessor& p);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (Colours::background); }
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
 private:
     std::array<LFOStrip, MAX_LFOS> strips;
@@ -287,10 +287,10 @@ public:
 private:
     ViolentAudioProcessor& processor;
     juce::ToggleButton enableButton { "Reverb" };
-    LabelledKnob roomKnob    { "Room",    Colours::blue  };
-    LabelledKnob dampingKnob { "Damping", Colours::teal  };
-    LabelledKnob wetKnob     { "Wet",     Colours::accent };
-    LabelledKnob widthKnob   { "Width",   Colours::green };
+    LabelledKnob roomKnob    { "Room",    ViolentColours::blue  };
+    LabelledKnob dampingKnob { "Damping", ViolentColours::teal  };
+    LabelledKnob wetKnob     { "Wet",     ViolentColours::accent };
+    LabelledKnob widthKnob   { "Width",   ViolentColours::green };
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> roomAtt, dampingAtt, wetAtt, widthAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbPanel)
@@ -306,9 +306,9 @@ public:
 private:
     ViolentAudioProcessor& processor;
     juce::ToggleButton enableButton { "Distortion" };
-    LabelledKnob driveKnob { "Drive", Colours::red    };
-    LabelledKnob toneKnob  { "Tone",  Colours::yellow };
-    LabelledKnob levelKnob { "Level", Colours::green  };
+    LabelledKnob driveKnob { "Drive", ViolentColours::red    };
+    LabelledKnob toneKnob  { "Tone",  ViolentColours::yellow };
+    LabelledKnob levelKnob { "Level", ViolentColours::green  };
     juce::ComboBox typeBox;
     juce::Label    typeLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>  driveAtt, toneAtt, levelAtt;
@@ -327,11 +327,11 @@ public:
 private:
     ViolentAudioProcessor& processor;
     juce::ToggleButton enableButton { "Compressor" };
-    LabelledKnob threshKnob   { "Threshold", Colours::red    };
-    LabelledKnob ratioKnob    { "Ratio",     Colours::yellow };
-    LabelledKnob attackKnob   { "Attack",    Colours::green  };
-    LabelledKnob releaseKnob  { "Release",   Colours::blue   };
-    LabelledKnob makeupKnob   { "Makeup",    Colours::accent };
+    LabelledKnob threshKnob   { "Threshold", ViolentColours::red    };
+    LabelledKnob ratioKnob    { "Ratio",     ViolentColours::yellow };
+    LabelledKnob attackKnob   { "Attack",    ViolentColours::green  };
+    LabelledKnob releaseKnob  { "Release",   ViolentColours::blue   };
+    LabelledKnob makeupKnob   { "Makeup",    ViolentColours::accent };
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
         threshAtt, ratioAtt, attackAtt, releaseAtt, makeupAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
@@ -348,10 +348,10 @@ public:
 private:
     ViolentAudioProcessor& processor;
     juce::ToggleButton enableButton { "Gate" };
-    LabelledKnob threshKnob  { "Threshold", Colours::red   };
-    LabelledKnob attackKnob  { "Attack",    Colours::green };
-    LabelledKnob releaseKnob { "Release",   Colours::blue  };
-    LabelledKnob ratioKnob   { "Ratio",     Colours::yellow};
+    LabelledKnob threshKnob  { "Threshold", ViolentColours::red   };
+    LabelledKnob attackKnob  { "Attack",    ViolentColours::green };
+    LabelledKnob releaseKnob { "Release",   ViolentColours::blue  };
+    LabelledKnob ratioKnob   { "Ratio",     ViolentColours::yellow};
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
         threshAtt, attackAtt, releaseAtt, ratioAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;

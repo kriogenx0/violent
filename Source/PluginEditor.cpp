@@ -5,23 +5,23 @@
 //==============================================================================
 ViolentLookAndFeel::ViolentLookAndFeel()
 {
-    setColour (juce::ResizableWindow::backgroundColourId,   Colours::background);
-    setColour (juce::Label::textColourId,                   Colours::text);
-    setColour (juce::Slider::thumbColourId,                 Colours::accent);
-    setColour (juce::Slider::trackColourId,                 Colours::surface);
-    setColour (juce::Slider::backgroundColourId,            Colours::surface);
-    setColour (juce::ToggleButton::textColourId,            Colours::text);
-    setColour (juce::TextButton::buttonColourId,            Colours::surface);
-    setColour (juce::TextButton::buttonOnColourId,          Colours::accent);
-    setColour (juce::TextButton::textColourOffId,           Colours::subtext);
-    setColour (juce::TextButton::textColourOnId,            Colours::background);
-    setColour (juce::ComboBox::backgroundColourId,          Colours::surface);
-    setColour (juce::ComboBox::textColourId,                Colours::text);
-    setColour (juce::ComboBox::outlineColourId,             Colours::overlay);
-    setColour (juce::PopupMenu::backgroundColourId,         Colours::surface);
-    setColour (juce::PopupMenu::textColourId,               Colours::text);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, Colours::accent);
-    setColour (juce::PopupMenu::highlightedTextColourId,    Colours::background);
+    setColour (juce::ResizableWindow::backgroundColourId,   ViolentColours::background);
+    setColour (juce::Label::textColourId,                   ViolentColours::text);
+    setColour (juce::Slider::thumbColourId,                 ViolentColours::accent);
+    setColour (juce::Slider::trackColourId,                 ViolentColours::surface);
+    setColour (juce::Slider::backgroundColourId,            ViolentColours::surface);
+    setColour (juce::ToggleButton::textColourId,            ViolentColours::text);
+    setColour (juce::TextButton::buttonColourId,            ViolentColours::surface);
+    setColour (juce::TextButton::buttonOnColourId,          ViolentColours::accent);
+    setColour (juce::TextButton::textColourOffId,           ViolentColours::subtext);
+    setColour (juce::TextButton::textColourOnId,            ViolentColours::background);
+    setColour (juce::ComboBox::backgroundColourId,          ViolentColours::surface);
+    setColour (juce::ComboBox::textColourId,                ViolentColours::text);
+    setColour (juce::ComboBox::outlineColourId,             ViolentColours::overlay);
+    setColour (juce::PopupMenu::backgroundColourId,         ViolentColours::surface);
+    setColour (juce::PopupMenu::textColourId,               ViolentColours::text);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, ViolentColours::accent);
+    setColour (juce::PopupMenu::highlightedTextColourId,    ViolentColours::background);
 }
 
 void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
@@ -37,18 +37,18 @@ void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     const float rw  = radius * 2.0f;
     const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    g.setColour (Colours::overlay);
+    g.setColour (ViolentColours::overlay);
     g.fillEllipse (rx, ry, rw, rw);
 
     juce::Path trackArc;
     trackArc.addCentredArc (centreX, centreY, radius - 3.0f, radius - 3.0f,
                              0.0f, rotaryStartAngle, rotaryEndAngle, true);
-    g.setColour (Colours::surface);
+    g.setColour (ViolentColours::surface);
     g.strokePath (trackArc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
 
     juce::Colour arcColour = slider.findColour (juce::Slider::rotarySliderFillColourId, false);
-    if (!arcColour.isOpaque()) arcColour = Colours::accent;
+    if (!arcColour.isOpaque()) arcColour = ViolentColours::accent;
 
     juce::Path valueArc;
     valueArc.addCentredArc (centreX, centreY, radius - 3.0f, radius - 3.0f,
@@ -60,7 +60,7 @@ void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     const float thumbRadius = 4.0f;
     const float thumbX = centreX + (radius - 8.0f) * std::cos (angle - juce::MathConstants<float>::halfPi);
     const float thumbY = centreY + (radius - 8.0f) * std::sin (angle - juce::MathConstants<float>::halfPi);
-    g.setColour (Colours::text);
+    g.setColour (ViolentColours::text);
     g.fillEllipse (thumbX - thumbRadius, thumbY - thumbRadius,
                    thumbRadius * 2.0f, thumbRadius * 2.0f);
 }
@@ -78,16 +78,16 @@ void ViolentLookAndFeel::drawLinearSlider (juce::Graphics& g,
         const float trackBottom = static_cast<float> (y + height) - 8.0f;
         const float trackLength = trackBottom - trackTop;
 
-        g.setColour (Colours::overlay);
+        g.setColour (ViolentColours::overlay);
         g.fillRoundedRectangle (centreX - trackW * 0.5f, trackTop, trackW, trackLength, 3.0f);
 
         const float midY = trackTop + trackLength * 0.5f;
-        g.setColour (Colours::subtext);
+        g.setColour (ViolentColours::subtext);
         g.drawHorizontalLine (static_cast<int> (midY), centreX - 8.0f, centreX + 8.0f);
 
         const float thumbY = sliderPos;
         juce::Colour fillColour = slider.findColour (juce::Slider::rotarySliderFillColourId, false);
-        if (!fillColour.isOpaque()) fillColour = Colours::accent;
+        if (!fillColour.isOpaque()) fillColour = ViolentColours::accent;
 
         if (thumbY < midY)
         {
@@ -102,7 +102,7 @@ void ViolentLookAndFeel::drawLinearSlider (juce::Graphics& g,
                                     trackW, thumbY - midY, 3.0f);
         }
 
-        g.setColour (Colours::text);
+        g.setColour (ViolentColours::text);
         g.fillRoundedRectangle (centreX - 11.0f, thumbY - 6.0f, 22.0f, 12.0f, 3.0f);
     }
 }
@@ -114,13 +114,13 @@ void ViolentLookAndFeel::drawToggleButton (juce::Graphics& g,
     const bool isOn = button.getToggleState();
     const auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
 
-    g.setColour (isOn ? Colours::accent : Colours::overlay);
+    g.setColour (isOn ? ViolentColours::accent : ViolentColours::overlay);
     g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
 
-    g.setColour (isOn ? Colours::accent.brighter (0.2f) : Colours::subtext);
+    g.setColour (isOn ? ViolentColours::accent.brighter (0.2f) : ViolentColours::subtext);
     g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.5f);
 
-    g.setColour (isOn ? Colours::background : Colours::text);
+    g.setColour (isOn ? ViolentColours::background : ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withHeight (12.0f).withStyle ("Bold")));
     g.drawFittedText (button.getButtonText(), button.getLocalBounds(),
                       juce::Justification::centred, 1);
@@ -134,11 +134,11 @@ void ViolentLookAndFeel::drawButtonBackground (juce::Graphics& g,
     const auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
     const bool isOn   = button.getToggleState();
 
-    g.setColour (isOn ? Colours::accent : (shouldDrawButtonAsHighlighted
-                                           ? Colours::overlay : Colours::surface));
+    g.setColour (isOn ? ViolentColours::accent : (shouldDrawButtonAsHighlighted
+                                           ? ViolentColours::overlay : ViolentColours::surface));
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    g.setColour (isOn ? Colours::accent.brighter (0.2f) : Colours::overlay);
+    g.setColour (isOn ? ViolentColours::accent.brighter (0.2f) : ViolentColours::overlay);
     g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
 }
 
@@ -160,11 +160,11 @@ LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)
 
     nameLabel.setText (name, juce::dontSendNotification);
     nameLabel.setJustificationType (juce::Justification::centred);
-    nameLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (nameLabel);
 
     valueLabel.setJustificationType (juce::Justification::centred);
-    valueLabel.setColour (juce::Label::textColourId, Colours::text);
+    valueLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (valueLabel);
 
     slider.onValueChange = [this]
@@ -188,10 +188,10 @@ void LabelledKnob::resized()
 static void paintStripHeader (juce::Graphics& g, juce::Component& strip,
                                const juce::String& title, bool enabled)
 {
-    g.fillAll (Colours::background);
-    g.setColour (enabled ? Colours::overlay : Colours::surface);
+    g.fillAll (ViolentColours::background);
+    g.setColour (enabled ? ViolentColours::overlay : ViolentColours::surface);
     g.fillRoundedRectangle (strip.getLocalBounds().toFloat().reduced (2.0f), 6.0f);
-    g.setColour (enabled ? Colours::accent : Colours::subtext);
+    g.setColour (enabled ? ViolentColours::accent : ViolentColours::subtext);
     g.drawRoundedRectangle (strip.getLocalBounds().toFloat().reduced (2.0f), 6.0f, 1.0f);
 }
 
@@ -203,7 +203,7 @@ SynthStrip::SynthStrip (ViolentAudioProcessor& p, int slotIndex)
 {
     nameLabel.setText ("SYNTH " + juce::String (slot + 1), juce::dontSendNotification);
     nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
-    nameLabel.setColour (juce::Label::textColourId, Colours::text);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
     enableBtn.setButtonText ("ON");
@@ -214,7 +214,7 @@ SynthStrip::SynthStrip (ViolentAudioProcessor& p, int slotIndex)
 
     waveLabel.setText ("Wave", juce::dontSendNotification);
     waveLabel.setJustificationType (juce::Justification::centred);
-    waveLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    waveLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (waveLabel);
 
     for (const auto& w : { "Sine", "Saw", "Square", "Tri" })
@@ -272,7 +272,7 @@ FilterStrip::FilterStrip (ViolentAudioProcessor& p, int slotIndex)
 {
     nameLabel.setText ("FILTER " + juce::String (slot + 1), juce::dontSendNotification);
     nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
-    nameLabel.setColour (juce::Label::textColourId, Colours::text);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
     enableBtn.setButtonText ("ON");
@@ -283,7 +283,7 @@ FilterStrip::FilterStrip (ViolentAudioProcessor& p, int slotIndex)
 
     typeLabel.setText ("Type", juce::dontSendNotification);
     typeLabel.setJustificationType (juce::Justification::centred);
-    typeLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    typeLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (typeLabel);
 
     for (const auto& t : { "Low Pass", "High Pass", "Band Pass", "Notch" })
@@ -331,7 +331,7 @@ LFOStrip::LFOStrip (ViolentAudioProcessor& p, int slotIndex)
 {
     nameLabel.setText ("LFO " + juce::String (slot + 1), juce::dontSendNotification);
     nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
-    nameLabel.setColour (juce::Label::textColourId, Colours::text);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
     enableBtn.setButtonText ("ON");
@@ -342,7 +342,7 @@ LFOStrip::LFOStrip (ViolentAudioProcessor& p, int slotIndex)
 
     shapeLabel.setText ("Shape", juce::dontSendNotification);
     shapeLabel.setJustificationType (juce::Justification::centred);
-    shapeLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    shapeLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (shapeLabel);
 
     for (const auto& s : { "Sine", "Triangle", "Saw", "Square" })
@@ -353,7 +353,7 @@ LFOStrip::LFOStrip (ViolentAudioProcessor& p, int slotIndex)
 
     targetLabel.setText ("Target", juce::dontSendNotification);
     targetLabel.setJustificationType (juce::Justification::centred);
-    targetLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    targetLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (targetLabel);
 
     for (const auto& t : { "None", "Flt Cutoff", "Osc Volume", "Osc Detune" })
@@ -364,7 +364,7 @@ LFOStrip::LFOStrip (ViolentAudioProcessor& p, int slotIndex)
 
     tgtSlotLabel.setText ("Slot", juce::dontSendNotification);
     tgtSlotLabel.setJustificationType (juce::Justification::centred);
-    tgtSlotLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    tgtSlotLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (tgtSlotLabel);
 
     for (int i = 1; i <= 4; ++i)
@@ -416,7 +416,7 @@ SampleStrip::SampleStrip (ViolentAudioProcessor& p, int slotIndex)
 {
     nameLabel.setText ("SAMPLE " + juce::String (slot + 1), juce::dontSendNotification);
     nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
-    nameLabel.setColour (juce::Label::textColourId, Colours::text);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
     enableBtn.setButtonText ("ON");
@@ -430,7 +430,7 @@ SampleStrip::SampleStrip (ViolentAudioProcessor& p, int slotIndex)
 
     fileLabel.setText ("(no file)", juce::dontSendNotification);
     fileLabel.setFont (juce::Font (juce::FontOptions().withHeight (11.0f)));
-    fileLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    fileLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     fileLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (fileLabel);
 
@@ -442,13 +442,13 @@ SampleStrip::SampleStrip (ViolentAudioProcessor& p, int slotIndex)
 
     rootLabel.setText ("Root", juce::dontSendNotification);
     rootLabel.setJustificationType (juce::Justification::centredRight);
-    rootLabel.setColour (juce::Label::textColourId, Colours::yellow);
+    rootLabel.setColour (juce::Label::textColourId, ViolentColours::yellow);
     addAndMakeVisible (rootLabel);
 
     rootSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     rootSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 36, 18);
-    rootSlider.setColour (juce::Slider::trackColourId,            Colours::yellow.withAlpha (0.4f));
-    rootSlider.setColour (juce::Slider::thumbColourId,            Colours::yellow);
+    rootSlider.setColour (juce::Slider::trackColourId,            ViolentColours::yellow.withAlpha (0.4f));
+    rootSlider.setColour (juce::Slider::thumbColourId,            ViolentColours::yellow);
     addAndMakeVisible (rootSlider);
 
     for (auto* k : { &gainKnob, &attackKnob, &decayKnob, &sustainKnob, &releaseKnob })
@@ -614,13 +614,13 @@ EQPanel::EQPanel (ViolentAudioProcessor& p) : processor (p)
         auto& s = bandSliders[i];
         s.setSliderStyle (juce::Slider::LinearVertical);
         s.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        s.setColour (juce::Slider::rotarySliderFillColourId, Colours::accent);
+        s.setColour (juce::Slider::rotarySliderFillColourId, ViolentColours::accent);
         addAndMakeVisible (s);
 
         auto& l = freqLabels[i];
         l.setText (freqNames[i], juce::dontSendNotification);
         l.setJustificationType (juce::Justification::centred);
-        l.setColour (juce::Label::textColourId, Colours::subtext);
+        l.setColour (juce::Label::textColourId, ViolentColours::subtext);
         addAndMakeVisible (l);
 
         sliderAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -637,8 +637,8 @@ EQPanel::~EQPanel() {}
 
 void EQPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    g.setColour (Colours::overlay);
+    g.fillAll (ViolentColours::background);
+    g.setColour (ViolentColours::overlay);
     const auto area  = getLocalBounds().reduced (20, 60).toFloat();
     const float midY = area.getY() + area.getHeight() * 0.5f;
     g.drawHorizontalLine (static_cast<int> (midY), area.getX(), area.getRight());
@@ -680,8 +680,8 @@ ReverbPanel::~ReverbPanel() {}
 
 void ReverbPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    g.setColour (Colours::text);
+    g.fillAll (ViolentColours::background);
+    g.setColour (ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
     g.drawText ("REVERB", getLocalBounds().removeFromTop (60), juce::Justification::centred);
 }
@@ -718,7 +718,7 @@ DistortionPanel::DistortionPanel (ViolentAudioProcessor& p) : processor (p)
     addAndMakeVisible (typeBox);
     typeLabel.setText ("Type", juce::dontSendNotification);
     typeLabel.setJustificationType (juce::Justification::centred);
-    typeLabel.setColour (juce::Label::textColourId, Colours::subtext);
+    typeLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (typeLabel);
     typeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, "dist_type", typeBox);
@@ -728,8 +728,8 @@ DistortionPanel::~DistortionPanel() {}
 
 void DistortionPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    g.setColour (Colours::text);
+    g.fillAll (ViolentColours::background);
+    g.setColour (ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
     g.drawText ("DISTORTION", getLocalBounds().removeFromTop (60), juce::Justification::centred);
 }
@@ -771,8 +771,8 @@ CompressorPanel::~CompressorPanel() {}
 
 void CompressorPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    g.setColour (Colours::text);
+    g.fillAll (ViolentColours::background);
+    g.setColour (ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
     g.drawText ("COMPRESSOR", getLocalBounds().removeFromTop (60), juce::Justification::centred);
 }
@@ -811,8 +811,8 @@ GatePanel::~GatePanel() {}
 
 void GatePanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
-    g.setColour (Colours::text);
+    g.fillAll (ViolentColours::background);
+    g.setColour (ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
     g.drawText ("GATE", getLocalBounds().removeFromTop (60), juce::Justification::centred);
 }
@@ -873,7 +873,7 @@ void FxTabPanel::showFxTab (int idx)
 
 void FxTabPanel::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
+    g.fillAll (ViolentColours::background);
 }
 
 void FxTabPanel::resized()
@@ -938,19 +938,19 @@ ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
 
 void ViolentAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
+    g.fillAll (ViolentColours::background);
 
     // Header bar
-    g.setColour (Colours::surface);
+    g.setColour (ViolentColours::surface);
     g.fillRect (0, 0, getWidth(), 50);
 
     // Plugin name
-    g.setColour (Colours::accent);
+    g.setColour (ViolentColours::accent);
     g.setFont (juce::Font (juce::FontOptions().withHeight (22.0f).withStyle ("Bold")));
     g.drawText ("VIOLENT", 16, 0, 120, 50, juce::Justification::centredLeft);
 
     // Separator
-    g.setColour (Colours::overlay);
+    g.setColour (ViolentColours::overlay);
     g.fillRect (0, 50, getWidth(), 2);
 }
 

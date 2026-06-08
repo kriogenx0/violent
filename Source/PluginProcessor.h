@@ -190,7 +190,7 @@ private:
 
     using StereoFilter = juce::dsp::ProcessorDuplicator<
         juce::dsp::IIR::Filter<float>,
-        juce::dsp::IIR::Coefficients<float>::Ptr>;
+        juce::dsp::IIR::Coefficients<float>>;
 
     std::array<StereoFilter, NUM_EQ_BANDS> eqBands;
     StereoFilter distToneFilter;
