@@ -4,6 +4,8 @@ NINJA       := ninja
 AU_DEST     := $(HOME)/Library/Audio/Plug-Ins/Components
 VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
 
+export MACOSX_DEPLOYMENT_TARGET := 13.0
+
 .PHONY: all setup configure build dev install install-au install-vst3 install-standalone run clean dependency-check help
 
 ## Default: build (Debug) + launch standalone
