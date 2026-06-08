@@ -4,10 +4,19 @@ NINJA       := ninja
 AU_DEST     := $(HOME)/Library/Audio/Plug-Ins/Components
 VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
 
-.PHONY: all configure build install install-au install-vst3 clean wipe dependency-check help
+.PHONY: all setup configure build dev install install-au install-vst3 install-standalone run clean wipe dependency-check help
 
 ## Default: check dependencies, configure (if needed) then build
 all: dependency-check build
+
+## Install build dependencies via Homebrew, then configure and build
+setup:
+	@command -v brew >/dev/null 2>&1 || { echo "Homebrew not found. Install it from https://brew.sh"; exit 1; }
+	@command -v cmake >/dev/null 2>&1 || brew install cmake
+	@command -v ninja >/dev/null 2>&1 || brew install ninja
+	@command -v git   >/dev/null 2>&1 || xcode-select --install
+	$(MAKE) configure
+	$(MAKE) build
 
 ## Step 1 – Generate the build system with CMake + Ninja
 configure:
@@ -43,6 +52,19 @@ install-vst3: build
 	cp -r "$(BUILD_DIR)/Violent_artefacts/VST3/Violent.vst3" "$(VST3_DEST)/"
 	@echo "Installed VST3 → $(VST3_DEST)/Violent.vst3"
 
+## Install Standalone app to /Applications
+install-standalone: build
+	cp -r "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app" /Applications/
+	@echo "Installed Standalone → /Applications/Violent.app"
+
+## Build debug version and launch the standalone app
+dev: build
+	open "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app"
+
+## Run the Standalone app directly from the build directory
+run: build
+	open "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app"
+
 ## Install both AU and VST3
 install: install-au install-vst3
 
@@ -73,6 +95,8 @@ help:
 	@echo ""
 	@echo "Violent plugin – build targets"
 	@echo "────────────────────────────────────────────"
+	@echo "  make dev                   build (Debug) + launch standalone"
+	@echo "  make setup                 install deps (brew) + configure + build"
 	@echo "  make                       configure + build (Debug)"
 	@echo "  make configure             run CMake (Debug)"
 	@echo "  make configure-release     run CMake (Release)"
@@ -82,6 +106,8 @@ help:
 	@echo "  make dependency-check          check cmake / ninja / git are installed"
 	@echo "  make install-au            copy .component to ~/Library"
 	@echo "  make install-vst3          copy .vst3 to ~/Library"
+	@echo "  make install-standalone    copy .app to /Applications"
+	@echo "  make run                   launch standalone app from build dir"
 	@echo "  make install               install both AU and VST3"
 	@echo "  make clean                 remove compiled objects"
 	@echo "  make wipe                  delete entire build/ directory"
