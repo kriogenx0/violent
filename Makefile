@@ -4,10 +4,10 @@ NINJA       := ninja
 AU_DEST     := $(HOME)/Library/Audio/Plug-Ins/Components
 VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
 
-.PHONY: all setup configure build dev install install-au install-vst3 install-standalone run clean wipe dependency-check help
+.PHONY: all setup configure build dev install install-au install-vst3 install-standalone run clean dependency-check help
 
-## Default: check dependencies, configure (if needed) then build
-all: dependency-check build
+## Default: build (Debug) + launch standalone
+all: dependency-check dev
 
 ## Install build dependencies via Homebrew, then configure and build
 setup:
@@ -68,12 +68,8 @@ run: build
 ## Install both AU and VST3
 install: install-au install-vst3
 
-## Remove build artefacts but keep the CMake cache
+## Delete the entire build directory (forces full reconfigure + rebuild)
 clean:
-	$(CMAKE) --build $(BUILD_DIR) --target clean
-
-## Nuke the entire build directory (forces full reconfigure + rebuild)
-wipe:
 	rm -rf $(BUILD_DIR)
 
 ## Check that required build tools are installed
@@ -109,12 +105,11 @@ help:
 	@echo "  make install-standalone    copy .app to /Applications"
 	@echo "  make run                   launch standalone app from build dir"
 	@echo "  make install               install both AU and VST3"
-	@echo "  make clean                 remove compiled objects"
-	@echo "  make wipe                  delete entire build/ directory"
+	@echo "  make clean                 delete entire build/ directory"
 	@echo ""
 	@echo "Prerequisites"
 	@echo "────────────────────────────────────────────"
 	@echo "  brew install cmake ninja"
 	@echo ""
-	@echo "First build clones JUCE 7.0.9 from GitHub (requires internet)."
+	@echo "First build clones JUCE from GitHub (requires internet)."
 	@echo ""
