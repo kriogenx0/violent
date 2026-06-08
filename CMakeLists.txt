@@ -37,6 +37,8 @@ juce_add_plugin(Violent
     VST3_CATEGORIES         "Instrument|Synth"
 )
 
+juce_generate_juce_header(Violent)
+
 target_sources(Violent
     PRIVATE
         Source/PluginProcessor.cpp
@@ -49,7 +51,6 @@ target_compile_definitions(Violent
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
 )
 
 target_link_libraries(Violent
