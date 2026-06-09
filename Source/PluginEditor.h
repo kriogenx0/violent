@@ -72,6 +72,8 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
 
+    std::function<void()> onRemove;
+
 private:
     ViolentAudioProcessor& processor;
     int slot;
@@ -80,8 +82,6 @@ private:
     juce::Label        nameLabel;
     juce::ComboBox     waveBox;
     juce::Label        waveLabel;
-
-    std::function<void()> onRemove;
 
     // Row 1: pitch + character
     LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
@@ -281,6 +281,7 @@ public:
     void paint (juce::Graphics&) override;
 
     std::function<void()> onRemove;
+    void showForType (FxType t);
 
 private:
     ViolentAudioProcessor& processor;
@@ -318,7 +319,6 @@ private:
 
     void layoutKnobs (std::initializer_list<LabelledKnob*> knobs, juce::Rectangle<int> area);
     void setAllInvisible();
-    void showForType (FxType t);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxCard)
 };

@@ -44,6 +44,7 @@ target_sources(Violent
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/SynthEngine.h
+        Source/FxChain.h
 )
 
 target_compile_definitions(Violent

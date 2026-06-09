@@ -194,6 +194,8 @@ ViolentAudioProcessor::createParameterLayout()
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
     }
 
+    return { params.begin(), params.end() };
+}
 
 //==============================================================================
 ViolentAudioProcessor::ViolentAudioProcessor()
