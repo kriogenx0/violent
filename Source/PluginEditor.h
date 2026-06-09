@@ -5,7 +5,7 @@
 //==============================================================================
 namespace ViolentColours
 {
-    static const juce::Colour background  { 0xff1e1e2e };
+    static const juce::Colour background  { 0xff111111 };
     static const juce::Colour surface     { 0xff313244 };
     static const juce::Colour overlay     { 0xff45475a };
     static const juce::Colour text        { 0xffcdd6f4 };
@@ -76,22 +76,35 @@ private:
     ViolentAudioProcessor& processor;
     int slot;
 
-    juce::ToggleButton enableBtn;
+    juce::TextButton   removeBtn { "×" };
     juce::Label        nameLabel;
     juce::ComboBox     waveBox;
     juce::Label        waveLabel;
 
+    std::function<void()> onRemove;
+
+    // Row 1: pitch + character
     LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
+    LabelledKnob octKnob     { "Octave",  ViolentColours::text    };
+    LabelledKnob semiKnob    { "Semi",    ViolentColours::subtext };
     LabelledKnob detuneKnob  { "Detune",  ViolentColours::yellow  };
+    LabelledKnob phaseKnob   { "Phase",   ViolentColours::teal    };
+    LabelledKnob pwKnob      { "PW",      ViolentColours::blue    };
+    LabelledKnob panKnob     { "Pan",     ViolentColours::accent  };
+    LabelledKnob velKnob     { "Vel",     ViolentColours::green   };
+    LabelledKnob uniKnob     { "Unison",  ViolentColours::red     };
+    LabelledKnob uniSpreadKnob { "Spread",ViolentColours::yellow  };
+
+    // Row 2: ADSR
     LabelledKnob attackKnob  { "Attack",  ViolentColours::green   };
     LabelledKnob decayKnob   { "Decay",   ViolentColours::teal    };
     LabelledKnob sustainKnob { "Sustain", ViolentColours::blue    };
     LabelledKnob releaseKnob { "Release", ViolentColours::red     };
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   enableAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        gainAtt, detuneAtt, attackAtt, decayAtt, sustainAtt, releaseAtt;
+        gainAtt, octAtt, semiAtt, detuneAtt, phaseAtt, pwAtt, panAtt,
+        velAtt, uniAtt, uniSpreadAtt, attackAtt, decayAtt, sustainAtt, releaseAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthStrip)
 };
@@ -204,188 +217,165 @@ private:
 };
 
 //==============================================================================
-class SampleTabPanel : public juce::Component
+template<typename StripT, int N>
+class SlotTabPanel : public juce::Component
 {
 public:
-    explicit SampleTabPanel (ViolentAudioProcessor& p);
-    void resized() override;
+    template<std::size_t... I>
+    SlotTabPanel (ViolentAudioProcessor& p, std::index_sequence<I...>)
+        : strips { StripT (p, (int) I)... }
+    { for (auto& s : strips) addAndMakeVisible (s); }
+
+    explicit SlotTabPanel (ViolentAudioProcessor& p)
+        : SlotTabPanel (p, std::make_index_sequence<N>{}) {}
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (8, 4);
+        const int h = area.getHeight() / N;
+        for (auto& s : strips)
+            s.setBounds (area.removeFromTop (h));
+    }
     void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
-private:
-    std::array<SampleStrip, MAX_SAMPLES> strips;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SampleTabPanel)
+    std::array<StripT, N> strips;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SlotTabPanel)
 };
 
+using SampleTabPanel = SlotTabPanel<SampleStrip, MAX_SAMPLES>;
+using FilterTabPanel = SlotTabPanel<FilterStrip,  MAX_FILTERS>;
+using ModTabPanel    = SlotTabPanel<LFOStrip,     MAX_LFOS>;
+
 //==============================================================================
-/** Tab panel holding MAX_SYNTHS SynthStrips stacked vertically. */
 class SynthTabPanel : public juce::Component
 {
 public:
+    static constexpr int STRIP_H = 130;
+    static constexpr int BUTTON_H = 36;
+
     explicit SynthTabPanel (ViolentAudioProcessor& p);
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
+    std::function<void()> onCountChanged;
+
 private:
+    ViolentAudioProcessor& processor;
     std::array<SynthStrip, MAX_SYNTHS> strips;
+    juce::TextButton addBtn { "+" };
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SynthTabPanel)
 };
 
 //==============================================================================
-class FilterTabPanel : public juce::Component
+/** One card in the FX chain — shows knobs for whichever FxType is active. */
+class FxCard : public juce::Component
 {
 public:
-    explicit FilterTabPanel (ViolentAudioProcessor& p);
-    void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
+    static constexpr int CARD_H = 110;
 
-private:
-    std::array<FilterStrip, MAX_FILTERS> strips;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilterTabPanel)
-};
+    FxCard (ViolentAudioProcessor& p, int slotIndex);
+    ~FxCard() override;
 
-//==============================================================================
-class ModTabPanel : public juce::Component
-{
-public:
-    explicit ModTabPanel (ViolentAudioProcessor& p);
-    void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
-
-private:
-    std::array<LFOStrip, MAX_LFOS> strips;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModTabPanel)
-};
-
-//==============================================================================
-// --- Existing FX panels (declarations only; implementations carry over) ---
-
-class EQPanel : public juce::Component
-{
-public:
-    EQPanel (ViolentAudioProcessor&);
-    ~EQPanel() override;
     void resized() override;
     void paint (juce::Graphics&) override;
-private:
-    ViolentAudioProcessor& processor;
-    juce::ToggleButton enableButton { "EQ" };
-    static constexpr int NUM_BANDS = 10;
-    std::array<juce::Slider, NUM_BANDS> bandSliders;
-    std::array<juce::Label,  NUM_BANDS> freqLabels;
-    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>, NUM_BANDS> sliderAttachments;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EQPanel)
-};
 
-class ReverbPanel : public juce::Component
-{
-public:
-    ReverbPanel (ViolentAudioProcessor&);
-    ~ReverbPanel() override;
-    void resized() override;
-    void paint (juce::Graphics&) override;
+    std::function<void()> onRemove;
+
 private:
     ViolentAudioProcessor& processor;
-    juce::ToggleButton enableButton { "Reverb" };
-    LabelledKnob roomKnob    { "Room",    ViolentColours::blue  };
-    LabelledKnob dampingKnob { "Damping", ViolentColours::teal  };
+    int slot;
+
+    juce::TextButton removeBtn { "×" };
+    juce::Label      titleLabel;
+
+    // Distortion
+    LabelledKnob driveKnob  { "Drive",  ViolentColours::red    };
+    LabelledKnob toneKnob   { "Tone",   ViolentColours::yellow };
+    LabelledKnob levelKnob  { "Level",  ViolentColours::green  };
+    juce::ComboBox distTypeBox;
+
+    // Compressor / Gate shared
+    LabelledKnob threshKnob   { "Thresh",  ViolentColours::red    };
+    LabelledKnob ratioKnob    { "Ratio",   ViolentColours::yellow };
+    LabelledKnob attackKnob   { "Attack",  ViolentColours::green  };
+    LabelledKnob releaseKnob  { "Release", ViolentColours::blue   };
+    LabelledKnob makeupKnob   { "Makeup",  ViolentColours::accent };
+
+    // Reverb
+    LabelledKnob roomKnob    { "Room",    ViolentColours::blue   };
+    LabelledKnob dampingKnob { "Damping", ViolentColours::teal   };
     LabelledKnob wetKnob     { "Wet",     ViolentColours::accent };
-    LabelledKnob widthKnob   { "Width",   ViolentColours::green };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> roomAtt, dampingAtt, wetAtt, widthAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbPanel)
-};
+    LabelledKnob widthKnob   { "Width",   ViolentColours::green  };
 
-class DistortionPanel : public juce::Component
-{
-public:
-    DistortionPanel (ViolentAudioProcessor&);
-    ~DistortionPanel() override;
-    void resized() override;
-    void paint (juce::Graphics&) override;
-private:
-    ViolentAudioProcessor& processor;
-    juce::ToggleButton enableButton { "Distortion" };
-    LabelledKnob driveKnob { "Drive", ViolentColours::red    };
-    LabelledKnob toneKnob  { "Tone",  ViolentColours::yellow };
-    LabelledKnob levelKnob { "Level", ViolentColours::green  };
-    juce::ComboBox typeBox;
-    juce::Label    typeLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>  driveAtt, toneAtt, levelAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> typeAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>  enableAttachment;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistortionPanel)
-};
+    using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ComboAtt  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
-class CompressorPanel : public juce::Component
-{
-public:
-    CompressorPanel (ViolentAudioProcessor&);
-    ~CompressorPanel() override;
-    void resized() override;
-    void paint (juce::Graphics&) override;
-private:
-    ViolentAudioProcessor& processor;
-    juce::ToggleButton enableButton { "Compressor" };
-    LabelledKnob threshKnob   { "Threshold", ViolentColours::red    };
-    LabelledKnob ratioKnob    { "Ratio",     ViolentColours::yellow };
-    LabelledKnob attackKnob   { "Attack",    ViolentColours::green  };
-    LabelledKnob releaseKnob  { "Release",   ViolentColours::blue   };
-    LabelledKnob makeupKnob   { "Makeup",    ViolentColours::accent };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        threshAtt, ratioAtt, attackAtt, releaseAtt, makeupAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CompressorPanel)
-};
+    std::unique_ptr<SliderAtt> driveAtt, toneAtt, levelAtt;
+    std::unique_ptr<ComboAtt>  distTypeAtt;
+    std::unique_ptr<SliderAtt> threshAtt, ratioAtt, attackAtt, releaseAtt, makeupAtt;
+    std::unique_ptr<SliderAtt> roomAtt, dampingAtt, wetAtt, widthAtt;
 
-class GatePanel : public juce::Component
-{
-public:
-    GatePanel (ViolentAudioProcessor&);
-    ~GatePanel() override;
-    void resized() override;
-    void paint (juce::Graphics&) override;
-private:
-    ViolentAudioProcessor& processor;
-    juce::ToggleButton enableButton { "Gate" };
-    LabelledKnob threshKnob  { "Threshold", ViolentColours::red   };
-    LabelledKnob attackKnob  { "Attack",    ViolentColours::green };
-    LabelledKnob releaseKnob { "Release",   ViolentColours::blue  };
-    LabelledKnob ratioKnob   { "Ratio",     ViolentColours::yellow};
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
-        threshAtt, attackAtt, releaseAtt, ratioAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GatePanel)
+    void layoutKnobs (std::initializer_list<LabelledKnob*> knobs, juce::Rectangle<int> area);
+    void setAllInvisible();
+    void showForType (FxType t);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxCard)
 };
 
 //==============================================================================
-/** Wraps the five existing FX panels with their own sub-tab bar. */
+/** The FX tab: a scrollable vertical chain of FxCards + a catalog "+" button. */
 class FxTabPanel : public juce::Component
 {
 public:
     explicit FxTabPanel (ViolentAudioProcessor& p);
     void resized() override;
-    void paint (juce::Graphics&) override;
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
+
+    std::function<void()> onCountChanged;
 
 private:
     ViolentAudioProcessor& processor;
-
-    juce::TextButton tabEQ    { "EQ"   };
-    juce::TextButton tabDist  { "DIST" };
-    juce::TextButton tabComp  { "COMP" };
-    juce::TextButton tabGate  { "GATE" };
-    juce::TextButton tabVerb  { "VERB" };
-
-    EQPanel         eqPanel;
-    DistortionPanel distPanel;
-    CompressorPanel compPanel;
-    GatePanel       gatePanel;
-    ReverbPanel     reverbPanel;
-
-    int currentFxTab = 0;
-    void showFxTab (int idx);
+    std::array<FxCard, MAX_FX> cards;
+    juce::TextButton addBtn { "+ Add Effect" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxTabPanel)
+};
+
+//==============================================================================
+/** Level meter bar (L+R). Polls processor.levelL/R via a timer. */
+class LevelMeter : public juce::Component, private juce::Timer
+{
+public:
+    LevelMeter() { startTimerHz (30); }
+    void setLevels (float l, float r) { peakL = l; peakR = r; }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        const float w = b.getWidth() * 0.45f;
+        const float gap = b.getWidth() - 2.0f * w;
+
+        auto drawBar = [&] (float x, float level)
+        {
+            const float db   = juce::Decibels::gainToDecibels (juce::jmax (0.0001f, level));
+            const float norm = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+            g.setColour (ViolentColours::surface);
+            g.fillRect (x, b.getY(), w, b.getHeight());
+            const juce::Colour c = norm > 0.85f ? ViolentColours::red
+                                 : norm > 0.6f  ? ViolentColours::yellow
+                                                : ViolentColours::green;
+            g.setColour (c.withAlpha (0.85f));
+            g.fillRect (x, b.getBottom() - b.getHeight() * norm, w, b.getHeight() * norm);
+        };
+
+        drawBar (b.getX(), peakL);
+        drawBar (b.getX() + w + gap, peakR);
+    }
+
+private:
+    float peakL = 0.0f, peakR = 0.0f;
+    void timerCallback() override { repaint(); }
 };
 
 //==============================================================================
@@ -398,11 +388,12 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    void updateMeter (float l, float r) { meter.setLevels (l, r); }
+
 private:
     ViolentAudioProcessor& processor;
     ViolentLookAndFeel     laf;
 
-    // Main tabs
     juce::TextButton tabSynth   { "SYNTH"   };
     juce::TextButton tabSamples { "SAMPLES" };
     juce::TextButton tabFilters { "FILTERS" };
@@ -415,8 +406,11 @@ private:
     ModTabPanel    modPanel;
     FxTabPanel     fxPanel;
 
+    LevelMeter meter;
+
     int currentTab = 0;
     void showTab (int tabIndex);
+    int  editorHeight() const noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ViolentAudioProcessorEditor)
 };

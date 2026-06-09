@@ -121,7 +121,7 @@ void ViolentLookAndFeel::drawToggleButton (juce::Graphics& g,
     g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.5f);
 
     g.setColour (isOn ? ViolentColours::background : ViolentColours::text);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (12.0f).withStyle ("Bold")));
+    g.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     g.drawFittedText (button.getButtonText(), button.getLocalBounds(),
                       juce::Justification::centred, 1);
 }
@@ -144,7 +144,7 @@ void ViolentLookAndFeel::drawButtonBackground (juce::Graphics& g,
 
 juce::Font ViolentLookAndFeel::getLabelFont (juce::Label&)
 {
-    return juce::Font (juce::FontOptions().withHeight (12.0f));
+    return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f));
 }
 
 //==============================================================================
@@ -201,45 +201,52 @@ static void paintStripHeader (juce::Graphics& g, juce::Component& strip,
 SynthStrip::SynthStrip (ViolentAudioProcessor& p, int slotIndex)
     : processor (p), slot (slotIndex)
 {
-    nameLabel.setText ("SYNTH " + juce::String (slot + 1), juce::dontSendNotification);
-    nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
+    nameLabel.setText ("OSC " + juce::String (slot + 1), juce::dontSendNotification);
+    nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
-    enableBtn.setButtonText ("ON");
-    enableBtn.setClickingTogglesState (true);
-    addAndMakeVisible (enableBtn);
-    enableAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, ParamIDs::synthEn (slot), enableBtn);
+    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
+    addAndMakeVisible (removeBtn);
+    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
 
     waveLabel.setText ("Wave", juce::dontSendNotification);
     waveLabel.setJustificationType (juce::Justification::centred);
     waveLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (waveLabel);
 
-    for (const auto& w : { "Sine", "Saw", "Square", "Tri" })
+    for (const auto& w : { "Sine", "Saw", "Square", "Tri", "Noise" })
         waveBox.addItem (w, waveBox.getNumItems() + 1);
     addAndMakeVisible (waveBox);
     waveAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.apvts, ParamIDs::synthType (slot), waveBox);
 
-    for (auto* k : { &gainKnob, &detuneKnob, &attackKnob, &decayKnob, &sustainKnob, &releaseKnob })
+    for (auto* k : { &gainKnob, &octKnob, &semiKnob, &detuneKnob, &phaseKnob,
+                     &pwKnob, &panKnob, &velKnob, &uniKnob, &uniSpreadKnob,
+                     &attackKnob, &decayKnob, &sustainKnob, &releaseKnob })
         addAndMakeVisible (*k);
 
-    gainAtt    = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthGain (slot), gainKnob.slider);
-    detuneAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthDet  (slot), detuneKnob.slider);
-    attackAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthAtt  (slot), attackKnob.slider);
-    decayAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthDec  (slot), decayKnob.slider);
-    sustainAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthSus  (slot), sustainKnob.slider);
-    releaseAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthRel  (slot), releaseKnob.slider);
+    gainAtt      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthGain     (slot), gainKnob.slider);
+    octAtt       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthOct      (slot), octKnob.slider);
+    semiAtt      = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthSemi     (slot), semiKnob.slider);
+    detuneAtt    = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthDet      (slot), detuneKnob.slider);
+    phaseAtt     = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthPhase    (slot), phaseKnob.slider);
+    pwAtt        = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthPW       (slot), pwKnob.slider);
+    panAtt       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthPan      (slot), panKnob.slider);
+    velAtt       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthVelS     (slot), velKnob.slider);
+    uniAtt       = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthUni      (slot), uniKnob.slider);
+    uniSpreadAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthUniSpread(slot), uniSpreadKnob.slider);
+    attackAtt    = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthAtt      (slot), attackKnob.slider);
+    decayAtt     = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthDec      (slot), decayKnob.slider);
+    sustainAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthSus      (slot), sustainKnob.slider);
+    releaseAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamIDs::synthRel      (slot), releaseKnob.slider);
 }
 
 SynthStrip::~SynthStrip() {}
 
 void SynthStrip::paint (juce::Graphics& g)
 {
-    const bool en = processor.apvts.getRawParameterValue (ParamIDs::synthEn (slot))->load() > 0.5f;
-    paintStripHeader (g, *this, "SYNTH " + juce::String (slot + 1), en);
+    paintStripHeader (g, *this, "OSC " + juce::String (slot + 1), true);
 }
 
 void SynthStrip::resized()
@@ -248,20 +255,36 @@ void SynthStrip::resized()
 
     // Header row
     auto header = area.removeFromTop (26);
-    enableBtn .setBounds (header.removeFromLeft  (44));
-    nameLabel .setBounds (header.removeFromLeft  (80));
-    waveLabel .setBounds (header.removeFromLeft  (36));
-    waveBox   .setBounds (header.removeFromLeft  (90));
+    removeBtn.setBounds (header.removeFromLeft  (28));
+    nameLabel.setBounds (header.removeFromLeft  (72));
+    waveLabel.setBounds (header.removeFromLeft  (36));
+    waveBox  .setBounds (header.removeFromLeft  (86));
 
-    // Knobs row
     area.removeFromTop (4);
-    const int knobW = area.getWidth() / 6;
-    gainKnob   .setBounds (area.removeFromLeft (knobW).reduced (4, 2));
-    detuneKnob .setBounds (area.removeFromLeft (knobW).reduced (4, 2));
-    attackKnob .setBounds (area.removeFromLeft (knobW).reduced (4, 2));
-    decayKnob  .setBounds (area.removeFromLeft (knobW).reduced (4, 2));
-    sustainKnob.setBounds (area.removeFromLeft (knobW).reduced (4, 2));
-    releaseKnob.setBounds (area.removeFromLeft (knobW).reduced (4, 2));
+
+    // Row 1: Gain | Oct | Semi | Detune | Phase | PW | Pan | Vel | Unison | Spread
+    auto row1 = area.removeFromTop (42);
+    const int r1w = row1.getWidth() / 10;
+    gainKnob     .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    octKnob      .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    semiKnob     .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    detuneKnob   .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    phaseKnob    .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    pwKnob       .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    panKnob      .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    velKnob      .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    uniKnob      .setBounds (row1.removeFromLeft (r1w).reduced (3, 1));
+    uniSpreadKnob.setBounds (row1.reduced (3, 1));
+
+    area.removeFromTop (4);
+
+    // Row 2: ADSR
+    auto row2 = area;
+    const int r2w = row2.getWidth() / 4;
+    attackKnob .setBounds (row2.removeFromLeft (r2w).reduced (3, 1));
+    decayKnob  .setBounds (row2.removeFromLeft (r2w).reduced (3, 1));
+    sustainKnob.setBounds (row2.removeFromLeft (r2w).reduced (3, 1));
+    releaseKnob.setBounds (row2.reduced (3, 1));
 }
 
 //==============================================================================
@@ -271,7 +294,7 @@ FilterStrip::FilterStrip (ViolentAudioProcessor& p, int slotIndex)
     : processor (p), slot (slotIndex)
 {
     nameLabel.setText ("FILTER " + juce::String (slot + 1), juce::dontSendNotification);
-    nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
+    nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
@@ -330,7 +353,7 @@ LFOStrip::LFOStrip (ViolentAudioProcessor& p, int slotIndex)
     : processor (p), slot (slotIndex)
 {
     nameLabel.setText ("LFO " + juce::String (slot + 1), juce::dontSendNotification);
-    nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
+    nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
@@ -415,7 +438,7 @@ SampleStrip::SampleStrip (ViolentAudioProcessor& p, int slotIndex)
     : processor (p), slot (slotIndex)
 {
     nameLabel.setText ("SAMPLE " + juce::String (slot + 1), juce::dontSendNotification);
-    nameLabel.setFont (juce::Font (juce::FontOptions().withHeight (13.0f).withStyle ("Bold")));
+    nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
 
@@ -429,7 +452,7 @@ SampleStrip::SampleStrip (ViolentAudioProcessor& p, int slotIndex)
     addAndMakeVisible (loadBtn);
 
     fileLabel.setText ("(no file)", juce::dontSendNotification);
-    fileLabel.setFont (juce::Font (juce::FontOptions().withHeight (11.0f)));
+    fileLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f)));
     fileLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     fileLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (fileLabel);
@@ -535,298 +558,183 @@ void SampleStrip::resized()
 }
 
 //==============================================================================
-// SampleTabPanel
-//==============================================================================
-SampleTabPanel::SampleTabPanel (ViolentAudioProcessor& p)
-    : strips { SampleStrip (p, 0), SampleStrip (p, 1), SampleStrip (p, 2), SampleStrip (p, 3) }
-{
-    for (auto& s : strips) addAndMakeVisible (s);
-}
-
-void SampleTabPanel::resized()
-{
-    auto area = getLocalBounds().reduced (8, 4);
-    const int h = area.getHeight() / MAX_SAMPLES;
-    for (auto& s : strips)
-        s.setBounds (area.removeFromTop (h));
-}
-
-//==============================================================================
-// Tab panels
+// SynthTabPanel
 //==============================================================================
 SynthTabPanel::SynthTabPanel (ViolentAudioProcessor& p)
-    : strips { SynthStrip (p, 0), SynthStrip (p, 1), SynthStrip (p, 2), SynthStrip (p, 3) }
+    : processor (p),
+      strips { SynthStrip(p,0), SynthStrip(p,1), SynthStrip(p,2), SynthStrip(p,3),
+               SynthStrip(p,4), SynthStrip(p,5), SynthStrip(p,6), SynthStrip(p,7),
+               SynthStrip(p,8), SynthStrip(p,9), SynthStrip(p,10),SynthStrip(p,11),
+               SynthStrip(p,12),SynthStrip(p,13),SynthStrip(p,14),SynthStrip(p,15) }
 {
     for (auto& s : strips) addAndMakeVisible (s);
+
+    addAndMakeVisible (addBtn);
+    addBtn.onClick = [this]
+    {
+        if (processor.numActiveSynths < MAX_SYNTHS)
+        {
+            ++processor.numActiveSynths;
+            if (onCountChanged) onCountChanged();
+        }
+    };
 }
 
 void SynthTabPanel::resized()
 {
-    auto area = getLocalBounds().reduced (8, 4);
-    const int h = area.getHeight() / MAX_SYNTHS;
-    for (auto& s : strips)
-        s.setBounds (area.removeFromTop (h));
-}
+    const int n    = processor.numActiveSynths;
+    auto      area = getLocalBounds().reduced (8, 4);
 
-FilterTabPanel::FilterTabPanel (ViolentAudioProcessor& p)
-    : strips { FilterStrip (p, 0), FilterStrip (p, 1), FilterStrip (p, 2), FilterStrip (p, 3) }
-{
-    for (auto& s : strips) addAndMakeVisible (s);
-}
-
-void FilterTabPanel::resized()
-{
-    auto area = getLocalBounds().reduced (8, 4);
-    const int h = area.getHeight() / MAX_FILTERS;
-    for (auto& s : strips)
-        s.setBounds (area.removeFromTop (h));
-}
-
-ModTabPanel::ModTabPanel (ViolentAudioProcessor& p)
-    : strips { LFOStrip (p, 0), LFOStrip (p, 1), LFOStrip (p, 2), LFOStrip (p, 3) }
-{
-    for (auto& s : strips) addAndMakeVisible (s);
-}
-
-void ModTabPanel::resized()
-{
-    auto area = getLocalBounds().reduced (8, 4);
-    const int h = area.getHeight() / MAX_LFOS;
-    for (auto& s : strips)
-        s.setBounds (area.removeFromTop (h));
-}
-
-//==============================================================================
-// EQPanel
-//==============================================================================
-EQPanel::EQPanel (ViolentAudioProcessor& p) : processor (p)
-{
-    const char* bandIDs[] = {
-        "eq_band_0", "eq_band_1", "eq_band_2", "eq_band_3", "eq_band_4",
-        "eq_band_5", "eq_band_6", "eq_band_7", "eq_band_8", "eq_band_9"
-    };
-    const char* freqNames[] = {
-        "31", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"
-    };
-
-    for (int i = 0; i < NUM_BANDS; ++i)
+    for (int i = 0; i < MAX_SYNTHS; ++i)
     {
-        auto& s = bandSliders[i];
-        s.setSliderStyle (juce::Slider::LinearVertical);
-        s.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-        s.setColour (juce::Slider::rotarySliderFillColourId, ViolentColours::accent);
-        addAndMakeVisible (s);
-
-        auto& l = freqLabels[i];
-        l.setText (freqNames[i], juce::dontSendNotification);
-        l.setJustificationType (juce::Justification::centred);
-        l.setColour (juce::Label::textColourId, ViolentColours::subtext);
-        addAndMakeVisible (l);
-
-        sliderAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            processor.apvts, bandIDs[i], s);
+        strips[i].setVisible (i < n);
+        if (i < n)
+        {
+            strips[i].setBounds (area.removeFromTop (STRIP_H));
+            strips[i].onRemove = [this, i]
+            {
+                if (processor.numActiveSynths <= 1) return;
+                --processor.numActiveSynths;
+                if (onCountChanged) onCountChanged();
+            };
+        }
     }
 
-    enableButton.setClickingTogglesState (true);
-    addAndMakeVisible (enableButton);
-    enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "eq_enabled", enableButton);
+    if (n < MAX_SYNTHS)
+        addBtn.setBounds (area.removeFromTop (BUTTON_H).reduced (8, 4));
+
+    addBtn.setVisible (n < MAX_SYNTHS);
 }
 
-EQPanel::~EQPanel() {}
+//==============================================================================
+// FxCard
+//==============================================================================
+FxCard::FxCard (ViolentAudioProcessor& p, int slotIndex)
+    : processor (p), slot (slotIndex)
+{
+    titleLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
+    titleLabel.setColour (juce::Label::textColourId, ViolentColours::text);
+    addAndMakeVisible (titleLabel);
 
-void EQPanel::paint (juce::Graphics& g)
+    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
+    addAndMakeVisible (removeBtn);
+    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
+
+    for (const auto& t : { "Soft Clip", "Hard Clip", "Fuzz" })
+        distTypeBox.addItem (t, distTypeBox.getNumItems() + 1);
+    addChildComponent (distTypeBox);
+
+    for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
+                     &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob,
+                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
+        addChildComponent (*k);
+
+    driveAtt    = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxDrive   (slot), driveKnob.slider);
+    toneAtt     = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxTone    (slot), toneKnob.slider);
+    levelAtt    = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxLevel   (slot), levelKnob.slider);
+    distTypeAtt = std::make_unique<ComboAtt>  (processor.apvts, ParamIDs::fxDistType(slot), distTypeBox);
+    threshAtt   = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxThresh  (slot), threshKnob.slider);
+    ratioAtt    = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxRatio   (slot), ratioKnob.slider);
+    attackAtt   = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxAttack  (slot), attackKnob.slider);
+    releaseAtt  = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxRelease (slot), releaseKnob.slider);
+    makeupAtt   = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxMakeup  (slot), makeupKnob.slider);
+    roomAtt     = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxRoom    (slot), roomKnob.slider);
+    dampingAtt  = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxDamping (slot), dampingKnob.slider);
+    wetAtt      = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxWet     (slot), wetKnob.slider);
+    widthAtt    = std::make_unique<SliderAtt> (processor.apvts, ParamIDs::fxWidth   (slot), widthKnob.slider);
+
+    showForType (processor.fxChain[(size_t) slot]);
+}
+
+FxCard::~FxCard() {}
+
+void FxCard::setAllInvisible()
+{
+    for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
+                     &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob,
+                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
+        k->setVisible (false);
+    distTypeBox.setVisible (false);
+}
+
+void FxCard::showForType (FxType t)
+{
+    setAllInvisible();
+    titleLabel.setText (fxTypeName (t), juce::dontSendNotification);
+
+    switch (t)
+    {
+        case FxType::Distortion:
+            driveKnob.setVisible (true); toneKnob.setVisible (true);
+            levelKnob.setVisible (true); distTypeBox.setVisible (true);
+            break;
+        case FxType::Compressor:
+            threshKnob.setVisible (true); ratioKnob.setVisible (true);
+            attackKnob.setVisible (true); releaseKnob.setVisible (true);
+            makeupKnob.setVisible (true);
+            break;
+        case FxType::Gate:
+            threshKnob.setVisible (true); ratioKnob.setVisible (true);
+            attackKnob.setVisible (true); releaseKnob.setVisible (true);
+            break;
+        case FxType::Reverb:
+            roomKnob.setVisible (true); dampingKnob.setVisible (true);
+            wetKnob.setVisible (true);  widthKnob.setVisible (true);
+            break;
+        default: break;
+    }
+}
+
+void FxCard::layoutKnobs (std::initializer_list<LabelledKnob*> knobs, juce::Rectangle<int> area)
+{
+    const int n = (int) knobs.size();
+    if (n == 0) return;
+    const int w = area.getWidth() / n;
+    for (auto* k : knobs)
+    {
+        k->setBounds (area.removeFromLeft (w).reduced (4, 2));
+    }
+}
+
+void FxCard::paint (juce::Graphics& g)
 {
     g.fillAll (ViolentColours::background);
     g.setColour (ViolentColours::overlay);
-    const auto area  = getLocalBounds().reduced (20, 60).toFloat();
-    const float midY = area.getY() + area.getHeight() * 0.5f;
-    g.drawHorizontalLine (static_cast<int> (midY), area.getX(), area.getRight());
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 6.0f);
+    g.setColour (ViolentColours::accent);
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 6.0f, 1.0f);
 }
 
-void EQPanel::resized()
+void FxCard::resized()
 {
-    auto area = getLocalBounds().reduced (16);
-    enableButton.setBounds (area.getWidth() - 80, 4, 80, 28);
-    const int labelH    = 20;
-    const int sliderArea = area.getHeight() - labelH - 20;
-    const int bandW     = area.getWidth() / NUM_BANDS;
-    for (int i = 0; i < NUM_BANDS; ++i)
+    auto area = getLocalBounds().reduced (6, 4);
+    auto header = area.removeFromTop (26);
+    removeBtn .setBounds (header.removeFromLeft (28));
+    titleLabel.setBounds (header);
+    area.removeFromTop (4);
+
+    const FxType t = processor.fxChain[(size_t) slot];
+    switch (t)
     {
-        const int bx = area.getX() + i * bandW;
-        bandSliders[i].setBounds (bx, area.getY() + 20,          bandW, sliderArea);
-        freqLabels[i] .setBounds (bx, area.getBottom() - labelH, bandW, labelH);
+        case FxType::Distortion:
+        {
+            const int typeW = 90;
+            auto typeArea = area.removeFromRight (typeW);
+            distTypeBox.setBounds (typeArea.reduced (4, 4));
+            layoutKnobs ({ &driveKnob, &toneKnob, &levelKnob }, area);
+            break;
+        }
+        case FxType::Compressor:
+            layoutKnobs ({ &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob }, area);
+            break;
+        case FxType::Gate:
+            layoutKnobs ({ &threshKnob, &ratioKnob, &attackKnob, &releaseKnob }, area);
+            break;
+        case FxType::Reverb:
+            layoutKnobs ({ &roomKnob, &dampingKnob, &wetKnob, &widthKnob }, area);
+            break;
+        default: break;
     }
-}
-
-//==============================================================================
-// ReverbPanel
-//==============================================================================
-ReverbPanel::ReverbPanel (ViolentAudioProcessor& p) : processor (p)
-{
-    enableButton.setClickingTogglesState (true);
-    addAndMakeVisible (enableButton);
-    enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "reverb_enabled", enableButton);
-    for (auto* k : { &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
-        addAndMakeVisible (*k);
-    roomAtt    = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "reverb_room",    roomKnob.slider);
-    dampingAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "reverb_damping", dampingKnob.slider);
-    wetAtt     = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "reverb_wet",     wetKnob.slider);
-    widthAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "reverb_width",   widthKnob.slider);
-}
-
-ReverbPanel::~ReverbPanel() {}
-
-void ReverbPanel::paint (juce::Graphics& g)
-{
-    g.fillAll (ViolentColours::background);
-    g.setColour (ViolentColours::text);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
-    g.drawText ("REVERB", getLocalBounds().removeFromTop (60), juce::Justification::centred);
-}
-
-void ReverbPanel::resized()
-{
-    auto area = getLocalBounds().reduced (20);
-    enableButton.setBounds (area.getWidth() - 100, 4, 100, 28);
-    auto knobArea = area.withTrimmedTop (60);
-    const int knobW = knobArea.getWidth() / 4;
-    roomKnob   .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    dampingKnob.setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    wetKnob    .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    widthKnob  .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-}
-
-//==============================================================================
-// DistortionPanel
-//==============================================================================
-DistortionPanel::DistortionPanel (ViolentAudioProcessor& p) : processor (p)
-{
-    enableButton.setClickingTogglesState (true);
-    addAndMakeVisible (enableButton);
-    enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "dist_enabled", enableButton);
-    for (auto* k : { &driveKnob, &toneKnob, &levelKnob })
-        addAndMakeVisible (*k);
-    driveAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "dist_drive", driveKnob.slider);
-    toneAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "dist_tone",  toneKnob.slider);
-    levelAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "dist_level", levelKnob.slider);
-    typeBox.addItem ("Soft Clip", 1);
-    typeBox.addItem ("Hard Clip", 2);
-    typeBox.addItem ("Fuzz",      3);
-    addAndMakeVisible (typeBox);
-    typeLabel.setText ("Type", juce::dontSendNotification);
-    typeLabel.setJustificationType (juce::Justification::centred);
-    typeLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
-    addAndMakeVisible (typeLabel);
-    typeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, "dist_type", typeBox);
-}
-
-DistortionPanel::~DistortionPanel() {}
-
-void DistortionPanel::paint (juce::Graphics& g)
-{
-    g.fillAll (ViolentColours::background);
-    g.setColour (ViolentColours::text);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
-    g.drawText ("DISTORTION", getLocalBounds().removeFromTop (60), juce::Justification::centred);
-}
-
-void DistortionPanel::resized()
-{
-    auto area = getLocalBounds().reduced (20);
-    enableButton.setBounds (area.getWidth() - 120, 4, 120, 28);
-    auto knobArea = area.withTrimmedTop (60);
-    const int knobW    = knobArea.getWidth() / 4;
-    const int typeBoxH = 30;
-    driveKnob.setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    toneKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    levelKnob.setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    auto typeArea = knobArea.removeFromLeft (knobW).reduced (10);
-    typeLabel.setBounds (typeArea.removeFromTop (18));
-    typeBox  .setBounds (typeArea.removeFromTop (typeBoxH));
-}
-
-//==============================================================================
-// CompressorPanel
-//==============================================================================
-CompressorPanel::CompressorPanel (ViolentAudioProcessor& p) : processor (p)
-{
-    enableButton.setClickingTogglesState (true);
-    addAndMakeVisible (enableButton);
-    enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "comp_enabled", enableButton);
-    for (auto* k : { &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob })
-        addAndMakeVisible (*k);
-    threshAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "comp_threshold", threshKnob.slider);
-    ratioAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "comp_ratio",     ratioKnob.slider);
-    attackAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "comp_attack",    attackKnob.slider);
-    releaseAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "comp_release",   releaseKnob.slider);
-    makeupAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "comp_makeup",    makeupKnob.slider);
-}
-
-CompressorPanel::~CompressorPanel() {}
-
-void CompressorPanel::paint (juce::Graphics& g)
-{
-    g.fillAll (ViolentColours::background);
-    g.setColour (ViolentColours::text);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
-    g.drawText ("COMPRESSOR", getLocalBounds().removeFromTop (60), juce::Justification::centred);
-}
-
-void CompressorPanel::resized()
-{
-    auto area = getLocalBounds().reduced (20);
-    enableButton.setBounds (area.getWidth() - 130, 4, 130, 28);
-    auto knobArea = area.withTrimmedTop (60);
-    const int knobW = knobArea.getWidth() / 5;
-    threshKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (8));
-    ratioKnob  .setBounds (knobArea.removeFromLeft (knobW).reduced (8));
-    attackKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (8));
-    releaseKnob.setBounds (knobArea.removeFromLeft (knobW).reduced (8));
-    makeupKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (8));
-}
-
-//==============================================================================
-// GatePanel
-//==============================================================================
-GatePanel::GatePanel (ViolentAudioProcessor& p) : processor (p)
-{
-    enableButton.setClickingTogglesState (true);
-    addAndMakeVisible (enableButton);
-    enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        processor.apvts, "gate_enabled", enableButton);
-    for (auto* k : { &threshKnob, &attackKnob, &releaseKnob, &ratioKnob })
-        addAndMakeVisible (*k);
-    threshAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "gate_threshold", threshKnob.slider);
-    attackAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "gate_attack",    attackKnob.slider);
-    releaseAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "gate_release",   releaseKnob.slider);
-    ratioAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "gate_ratio",     ratioKnob.slider);
-}
-
-GatePanel::~GatePanel() {}
-
-void GatePanel::paint (juce::Graphics& g)
-{
-    g.fillAll (ViolentColours::background);
-    g.setColour (ViolentColours::text);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (28.0f).withStyle ("Bold")));
-    g.drawText ("GATE", getLocalBounds().removeFromTop (60), juce::Justification::centred);
-}
-
-void GatePanel::resized()
-{
-    auto area = getLocalBounds().reduced (20);
-    enableButton.setBounds (area.getWidth() - 90, 4, 90, 28);
-    auto knobArea = area.withTrimmedTop (60);
-    const int knobW = knobArea.getWidth() / 4;
-    threshKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    attackKnob .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    releaseKnob.setBounds (knobArea.removeFromLeft (knobW).reduced (10));
-    ratioKnob  .setBounds (knobArea.removeFromLeft (knobW).reduced (10));
 }
 
 //==============================================================================
@@ -834,64 +742,68 @@ void GatePanel::resized()
 //==============================================================================
 FxTabPanel::FxTabPanel (ViolentAudioProcessor& p)
     : processor (p),
-      eqPanel (p), distPanel (p), compPanel (p), gatePanel (p), reverbPanel (p)
+      cards { FxCard(p,0), FxCard(p,1), FxCard(p,2), FxCard(p,3),
+              FxCard(p,4), FxCard(p,5), FxCard(p,6), FxCard(p,7) }
 {
-    for (auto* btn : { &tabEQ, &tabDist, &tabComp, &tabGate, &tabVerb })
+    for (auto& c : cards) addChildComponent (c);
+
+    addAndMakeVisible (addBtn);
+    addBtn.onClick = [this]
     {
-        btn->setClickingTogglesState (false);
-        btn->setRadioGroupId (2);
-        addAndMakeVisible (*btn);
-    }
-    tabEQ  .onClick = [this] { showFxTab (0); };
-    tabDist.onClick = [this] { showFxTab (1); };
-    tabComp.onClick = [this] { showFxTab (2); };
-    tabGate.onClick = [this] { showFxTab (3); };
-    tabVerb.onClick = [this] { showFxTab (4); };
+        if (processor.numActiveFx >= MAX_FX) return;
 
-    addAndMakeVisible (eqPanel);
-    addAndMakeVisible (distPanel);
-    addAndMakeVisible (compPanel);
-    addAndMakeVisible (gatePanel);
-    addAndMakeVisible (reverbPanel);
+        juce::PopupMenu menu;
+        menu.addItem (1, "Distortion");
+        menu.addItem (2, "Compressor");
+        menu.addItem (3, "Gate");
+        menu.addItem (4, "Reverb");
 
-    showFxTab (0);
-}
-
-void FxTabPanel::showFxTab (int idx)
-{
-    currentFxTab = idx;
-    eqPanel    .setVisible (idx == 0);
-    distPanel  .setVisible (idx == 1);
-    compPanel  .setVisible (idx == 2);
-    gatePanel  .setVisible (idx == 3);
-    reverbPanel.setVisible (idx == 4);
-
-    juce::TextButton* tabs[] = { &tabEQ, &tabDist, &tabComp, &tabGate, &tabVerb };
-    for (int i = 0; i < 5; ++i)
-        tabs[i]->setToggleState (i == idx, juce::dontSendNotification);
-}
-
-void FxTabPanel::paint (juce::Graphics& g)
-{
-    g.fillAll (ViolentColours::background);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (addBtn),
+            [this] (int result)
+            {
+                if (result == 0) return;
+                const FxType types[] = { FxType::Distortion, FxType::Compressor,
+                                         FxType::Gate,       FxType::Reverb };
+                const int idx = processor.numActiveFx;
+                processor.fxChain[(size_t) idx] = types[result - 1];
+                cards[(size_t) idx].showForType (types[result - 1]);
+                ++processor.numActiveFx;
+                if (onCountChanged) onCountChanged();
+            });
+    };
 }
 
 void FxTabPanel::resized()
 {
-    auto area = getLocalBounds();
+    const int n    = processor.numActiveFx;
+    auto      area = getLocalBounds().reduced (8, 4);
 
-    // Sub-tab bar
-    auto tabBar = area.removeFromTop (36);
-    const int tabW = tabBar.getWidth() / 5;
-    tabEQ  .setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
-    tabDist.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
-    tabComp.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
-    tabGate.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
-    tabVerb.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
+    for (int i = 0; i < MAX_FX; ++i)
+    {
+        cards[(size_t) i].setVisible (i < n);
+        if (i < n)
+        {
+            cards[(size_t) i].setBounds (area.removeFromTop (FxCard::CARD_H));
+            area.removeFromTop (4);
+            cards[(size_t) i].onRemove = [this, i]
+            {
+                if (processor.numActiveFx <= 0) return;
+                // Shift slots down
+                for (int j = i; j < processor.numActiveFx - 1; ++j)
+                {
+                    processor.fxChain[(size_t) j] = processor.fxChain[(size_t) (j + 1)];
+                    cards[(size_t) j].showForType (processor.fxChain[(size_t) j]);
+                }
+                processor.fxChain[(size_t) (processor.numActiveFx - 1)] = FxType::None;
+                --processor.numActiveFx;
+                if (onCountChanged) onCountChanged();
+            };
+        }
+    }
 
-    for (auto* panel : { (juce::Component*)&eqPanel, (juce::Component*)&distPanel, (juce::Component*)&compPanel,
-                                            (juce::Component*)&gatePanel, (juce::Component*)&reverbPanel })
-        panel->setBounds (area);
+    if (n < MAX_FX)
+        addBtn.setBounds (area.removeFromTop (36).reduced (8, 4));
+    addBtn.setVisible (n < MAX_FX);
 }
 
 //==============================================================================
@@ -907,7 +819,12 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
       fxPanel      (p)
 {
     setLookAndFeel (&laf);
-    setSize (920, 560);
+    setResizable (false, true);
+    setResizeLimits (920, 200, 920, 16 + 52 + MAX_SYNTHS * SynthTabPanel::STRIP_H + SynthTabPanel::BUTTON_H);
+    setSize (920, editorHeight());
+
+    synthPanel.onCountChanged = [this] { setSize (getWidth(), editorHeight()); };
+    fxPanel.onCountChanged    = [this] { setSize (getWidth(), editorHeight()); };
 
     for (auto* btn : { &tabSynth, &tabSamples, &tabFilters, &tabMod, &tabFx })
     {
@@ -927,6 +844,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (filterPanel);
     addAndMakeVisible (modPanel);
     addAndMakeVisible (fxPanel);
+    addAndMakeVisible (meter);
 
     showTab (0);
 }
@@ -946,12 +864,29 @@ void ViolentAudioProcessorEditor::paint (juce::Graphics& g)
 
     // Plugin name
     g.setColour (ViolentColours::accent);
-    g.setFont (juce::Font (juce::FontOptions().withHeight (22.0f).withStyle ("Bold")));
+    g.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (22.0f).withStyle ("Bold")));
     g.drawText ("VIOLENT", 16, 0, 120, 50, juce::Justification::centredLeft);
 
     // Separator
     g.setColour (ViolentColours::overlay);
     g.fillRect (0, 50, getWidth(), 2);
+}
+
+int ViolentAudioProcessorEditor::editorHeight() const noexcept
+{
+    if (currentTab == 0)
+    {
+        const int n = processor.numActiveSynths;
+        const bool hasAdd = (n < MAX_SYNTHS);
+        return 52 + n * SynthTabPanel::STRIP_H + (hasAdd ? SynthTabPanel::BUTTON_H : 0) + 16;
+    }
+    if (currentTab == 4)
+    {
+        const int n = processor.numActiveFx;
+        const bool hasAdd = (n < MAX_FX);
+        return 52 + n * (FxCard::CARD_H + 4) + (hasAdd ? 44 : 0) + 16;
+    }
+    return 560;
 }
 
 void ViolentAudioProcessorEditor::resized()
@@ -964,6 +899,10 @@ void ViolentAudioProcessorEditor::resized()
     tabFilters.setBounds (startX + 2 * tabW, 10, tabW - 4, 32);
     tabMod    .setBounds (startX + 3 * tabW, 10, tabW - 4, 32);
     tabFx     .setBounds (startX + 4 * tabW, 10, tabW - 4, 32);
+
+    meter.setBounds (getWidth() - 44, 8, 36, 34);
+    meter.setLevels (processor.levelL.load (std::memory_order_relaxed),
+                     processor.levelR.load (std::memory_order_relaxed));
 
     const auto content = juce::Rectangle<int> (0, 52, getWidth(), getHeight() - 52);
     synthPanel .setBounds (content);
@@ -985,4 +924,6 @@ void ViolentAudioProcessorEditor::showTab (int tabIndex)
     juce::TextButton* tabs[] = { &tabSynth, &tabSamples, &tabFilters, &tabMod, &tabFx };
     for (int i = 0; i < 5; ++i)
         tabs[i]->setToggleState (i == tabIndex, juce::dontSendNotification);
+
+    setSize (getWidth(), editorHeight());
 }

@@ -1,7 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 
-static constexpr int MAX_SYNTHS  = 4;
+static constexpr int MAX_SYNTHS  = 16;
 static constexpr int MAX_SAMPLES = 4;
 static constexpr int MAX_FILTERS = 4;
 static constexpr int MAX_LFOS    = 4;
@@ -71,16 +71,17 @@ struct ADSREnv
 };
 
 //==============================================================================
-/** Phase-accumulator oscillator with 4 waveforms.
- *  waveform: 0=Sine  1=Saw  2=Square  3=Triangle */
+/** Phase-accumulator oscillator with 5 waveforms + PWM.
+ *  waveform: 0=Sine  1=Saw  2=Square/PWM  3=Triangle  4=Noise */
 struct OscillatorGen
 {
     float phase = 0.0f;
+    juce::Random rng;
 
-    void reset() noexcept { phase = 0.0f; }
+    void reset (float phaseOffset = 0.0f) noexcept { phase = phaseOffset; }
 
     float tick (float frequencyHz, float detuneCents,
-                float sampleRate, int waveform) noexcept
+                float sampleRate, int waveform, float pulseWidth = 0.5f) noexcept
     {
         const float freq = frequencyHz * std::pow (2.0f, detuneCents / 1200.0f);
         phase += freq / sampleRate;
@@ -90,9 +91,10 @@ struct OscillatorGen
         {
             case 0:  return std::sin (phase * juce::MathConstants<float>::twoPi);
             case 1:  return 2.0f * phase - 1.0f;
-            case 2:  return phase < 0.5f ? 1.0f : -1.0f;
+            case 2:  return phase < pulseWidth ? 1.0f : -1.0f;
             case 3:  return phase < 0.5f ? (4.0f * phase - 1.0f)
                                          : (3.0f - 4.0f * phase);
+            case 4:  return rng.nextFloat() * 2.0f - 1.0f;
             default: return 0.0f;
         }
     }
@@ -105,6 +107,7 @@ struct SVFilter
 {
     float low[2]  = {};
     float band[2] = {};
+    float f_coeff = 0.0f, q_coeff = 0.0f;
 
     void reset() noexcept
     {
@@ -112,24 +115,25 @@ struct SVFilter
         for (auto& v : band) v = 0.0f;
     }
 
-    float process (int ch, float x, float cutoffHz, float resonance,
-                   float sampleRate, int type) noexcept
+    void setCoefficients (float cutoffHz, float resonance, float sampleRate) noexcept
     {
-        cutoffHz = juce::jlimit (20.0f, sampleRate * 0.49f, cutoffHz);
-        const float f = 2.0f * std::sin (juce::MathConstants<float>::pi
-                                         * cutoffHz / sampleRate);
-        const float q = 1.0f / juce::jmax (0.1f, resonance);
+        cutoffHz  = juce::jlimit (20.0f, sampleRate * 0.49f, cutoffHz);
+        f_coeff   = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffHz / sampleRate);
+        q_coeff   = 1.0f / juce::jmax (0.1f, resonance);
+    }
 
-        low[ch]        += f * band[ch];
-        const float hi  = x - low[ch] - q * band[ch];
-        band[ch]        = f * hi + band[ch];
+    float process (int ch, float x, int type) noexcept
+    {
+        low[ch]        += f_coeff * band[ch];
+        const float hi  = x - low[ch] - q_coeff * band[ch];
+        band[ch]        = f_coeff * hi + band[ch];
 
         switch (type)
         {
             case 0:  return low[ch];
             case 1:  return hi;
             case 2:  return band[ch];
-            case 3:  return hi + low[ch];   // Notch = HP + LP
+            case 3:  return hi + low[ch];
             default: return low[ch];
         }
     }
@@ -162,6 +166,9 @@ struct LFOGen
 };
 
 //==============================================================================
+static constexpr int MAX_UNISON = 8;
+
+//==============================================================================
 /** One polyphonic voice: MAX_SYNTHS oscillators + envelopes. */
 struct Voice
 {
@@ -170,7 +177,7 @@ struct Voice
     float velocity   = 1.0f;
     float baseFreqHz = 0.0f;
 
-    OscillatorGen osc [MAX_SYNTHS];
+    OscillatorGen osc [MAX_SYNTHS][MAX_UNISON];
     ADSREnv       adsr[MAX_SYNTHS];
 
     // Sample playback state
@@ -179,7 +186,7 @@ struct Voice
 
     // Per-block LFO modulation (written by processor, read during render)
     float detuneModCents[MAX_SYNTHS] = {};
-    float volumeModMult [MAX_SYNTHS] = {};   // additive linear multiplier offset
+    float volumeModMult [MAX_SYNTHS] = {};
 
     void prepare (double sampleRate) noexcept
     {
@@ -191,10 +198,10 @@ struct Voice
     {
         active = false;
         note   = -1;
-        for (auto& o : osc)       o.reset();
-        for (auto& a : adsr)      a.reset();
-        for (auto& sp : smpPlayer) sp.reset();
-        for (auto& a : smpAdsr)   a.reset();
+        for (auto& row : osc)       for (auto& o : row) o.reset();
+        for (auto& a : adsr)        a.reset();
+        for (auto& sp : smpPlayer)  sp.reset();
+        for (auto& a : smpAdsr)     a.reset();
         for (auto& v : detuneModCents) v = 0.0f;
         for (auto& v : volumeModMult)  v = 0.0f;
     }
