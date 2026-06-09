@@ -241,14 +241,14 @@ void ViolentAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
 
     // Prepare FX chain
     for (int i = 0; i < NUM_EQ_BANDS; ++i)
-        eqBands[i].state = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
+        eqBands[i].state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter (
             sampleRate, static_cast<double> (EQ_FREQUENCIES[i]),
             static_cast<double> (EQ_Q), 1.0f);
 
     for (auto& band : eqBands)
         band.prepare (processSpec);
 
-    distToneFilter.state = juce::dsp::IIR::Coefficients<float>::makeLowPass (
+    distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
         sampleRate, 4000.0);
     distToneFilter.prepare (processSpec);
 
@@ -269,10 +269,10 @@ void ViolentAudioProcessor::releaseResources()
 
 bool ViolentAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo() &&
-        layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono())
-        return false;
-    return true;
+    auto out = layouts.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::stereo()
+        || out == juce::AudioChannelSet::mono()
+        || out == juce::AudioChannelSet::disabled();
 }
 
 //==============================================================================
@@ -557,7 +557,8 @@ void ViolentAudioProcessor::loadSample (int slotIndex, const juce::File& file)
     }
 }
 
-//============================================================================== (juce::AudioBuffer<float>& buffer)
+//==============================================================================
+void ViolentAudioProcessor::applyFilters (juce::AudioBuffer<float>& buffer)
 {
     const int   numSamples = buffer.getNumSamples();
     const float sr         = static_cast<float> (processSpec.sampleRate);

@@ -1,8 +1,10 @@
-BUILD_DIR   := build
-CMAKE       := cmake
-NINJA       := ninja
-AU_DEST     := $(HOME)/Library/Audio/Plug-Ins/Components
-VST3_DEST   := $(HOME)/Library/Audio/Plug-Ins/VST3
+BUILD_DIR      := build
+BUILD_TYPE     := Debug
+ARTEFACTS_DIR  := $(BUILD_DIR)/Violent_artefacts/$(BUILD_TYPE)
+CMAKE          := cmake
+NINJA          := ninja
+AU_DEST        := $(HOME)/Library/Audio/Plug-Ins/Components
+VST3_DEST      := $(HOME)/Library/Audio/Plug-Ins/VST3
 
 export MACOSX_DEPLOYMENT_TARGET := 13.0
 
@@ -27,6 +29,7 @@ configure:
 ## Step 1 (Release) – same but optimised
 configure-release:
 	$(CMAKE) -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release
+	$(eval BUILD_TYPE := Release)
 
 ## Step 2 – Compile everything
 build: $(BUILD_DIR)/build.ninja
@@ -45,27 +48,27 @@ setup-and-build-release:
 ## Install AU to ~/Library/Audio/Plug-Ins/Components
 install-au: build
 	mkdir -p "$(AU_DEST)"
-	cp -r "$(BUILD_DIR)/Violent_artefacts/AU/Violent.component" "$(AU_DEST)/"
+	cp -r "$(ARTEFACTS_DIR)/AU/Violent.component" "$(AU_DEST)/"
 	@echo "Installed AU → $(AU_DEST)/Violent.component"
 
 ## Install VST3 to ~/Library/Audio/Plug-Ins/VST3
 install-vst3: build
 	mkdir -p "$(VST3_DEST)"
-	cp -r "$(BUILD_DIR)/Violent_artefacts/VST3/Violent.vst3" "$(VST3_DEST)/"
+	cp -r "$(ARTEFACTS_DIR)/VST3/Violent.vst3" "$(VST3_DEST)/"
 	@echo "Installed VST3 → $(VST3_DEST)/Violent.vst3"
 
 ## Install Standalone app to /Applications
 install-standalone: build
-	cp -r "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app" /Applications/
+	cp -r "$(ARTEFACTS_DIR)/Standalone/Violent.app" /Applications/
 	@echo "Installed Standalone → /Applications/Violent.app"
 
 ## Build debug version and launch the standalone app
 dev: build
-	open "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app"
+	open "$(ARTEFACTS_DIR)/Standalone/Violent.app"
 
 ## Run the Standalone app directly from the build directory
 run: build
-	open "$(BUILD_DIR)/Violent_artefacts/Standalone/Violent.app"
+	open "$(ARTEFACTS_DIR)/Standalone/Violent.app"
 
 ## Install both AU and VST3
 install: install-au install-vst3

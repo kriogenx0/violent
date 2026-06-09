@@ -889,8 +889,8 @@ void FxTabPanel::resized()
     tabGate.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
     tabVerb.setBounds (tabBar.removeFromLeft (tabW).reduced (2, 4));
 
-    for (auto* panel : { (juce::Component*)&eqPanel, &distPanel, &compPanel,
-                                            &gatePanel, &reverbPanel })
+    for (auto* panel : { (juce::Component*)&eqPanel, (juce::Component*)&distPanel, (juce::Component*)&compPanel,
+                                            (juce::Component*)&gatePanel, (juce::Component*)&reverbPanel })
         panel->setBounds (area);
 }
 
