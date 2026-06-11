@@ -2,31 +2,14 @@
 #include <JuceHeader.h>
 #include "SynthEngine.h"
 #include "FxChain.h"
+#include "StreamChain.h"
 
 static constexpr int NUM_EQ_BANDS = 10;
 
 //==============================================================================
 namespace ParamIDs
 {
-    // ---------- Synth slots ----------
-    inline juce::String synthEn        (int n) { return "synth_" + juce::String (n) + "_en"; }
-    inline juce::String synthType      (int n) { return "synth_" + juce::String (n) + "_type"; }
-    inline juce::String synthGain      (int n) { return "synth_" + juce::String (n) + "_gain"; }
-    inline juce::String synthOct       (int n) { return "synth_" + juce::String (n) + "_oct"; }
-    inline juce::String synthSemi      (int n) { return "synth_" + juce::String (n) + "_semi"; }
-    inline juce::String synthDet       (int n) { return "synth_" + juce::String (n) + "_det"; }
-    inline juce::String synthPhase     (int n) { return "synth_" + juce::String (n) + "_phase"; }
-    inline juce::String synthPW        (int n) { return "synth_" + juce::String (n) + "_pw"; }
-    inline juce::String synthPan       (int n) { return "synth_" + juce::String (n) + "_pan"; }
-    inline juce::String synthVelS      (int n) { return "synth_" + juce::String (n) + "_vels"; }
-    inline juce::String synthUni       (int n) { return "synth_" + juce::String (n) + "_uni"; }
-    inline juce::String synthUniSpread (int n) { return "synth_" + juce::String (n) + "_unispread"; }
-    inline juce::String synthAtt       (int n) { return "synth_" + juce::String (n) + "_att"; }
-    inline juce::String synthDec       (int n) { return "synth_" + juce::String (n) + "_dec"; }
-    inline juce::String synthSus       (int n) { return "synth_" + juce::String (n) + "_sus"; }
-    inline juce::String synthRel       (int n) { return "synth_" + juce::String (n) + "_rel"; }
-
-    // ---------- Sample slots ----------
+    // ---------- Legacy sample/LFO slots (kept for sample player) ----------
     inline juce::String smpEn   (int n) { return "smp_" + juce::String (n) + "_en"; }
     inline juce::String smpRoot (int n) { return "smp_" + juce::String (n) + "_root"; }
     inline juce::String smpGain (int n) { return "smp_" + juce::String (n) + "_gain"; }
@@ -36,13 +19,6 @@ namespace ParamIDs
     inline juce::String smpRel  (int n) { return "smp_" + juce::String (n) + "_rel"; }
     inline juce::String smpLoop (int n) { return "smp_" + juce::String (n) + "_loop"; }
 
-    // ---------- Filter slots ----------
-    inline juce::String fltEn   (int n) { return "flt_" + juce::String (n) + "_en"; }
-    inline juce::String fltType (int n) { return "flt_" + juce::String (n) + "_type"; }
-    inline juce::String fltCut  (int n) { return "flt_" + juce::String (n) + "_cut"; }
-    inline juce::String fltRes  (int n) { return "flt_" + juce::String (n) + "_res"; }
-
-    // ---------- LFO slots ----------
     inline juce::String lfoEn     (int n) { return "lfo_" + juce::String (n) + "_en"; }
     inline juce::String lfoShape  (int n) { return "lfo_" + juce::String (n) + "_shp"; }
     inline juce::String lfoRate   (int n) { return "lfo_" + juce::String (n) + "_rate"; }
@@ -63,7 +39,6 @@ namespace ParamIDs
     static constexpr auto EQ_BAND_7 = "eq_band_7";
     static constexpr auto EQ_BAND_8 = "eq_band_8";
     static constexpr auto EQ_BAND_9 = "eq_band_9";
-    // FX chain ParamIDs are in FxChain.h
 }
 
 //==============================================================================
@@ -105,17 +80,24 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    // --- Active slot counts (persisted in state) ---
-    int numActiveSynths = 1;
-    int numActiveFx     = 0;
+    // -----------------------------------------------------------------------
+    // Stream state — owned here, written by UI, read by audio thread
+    // -----------------------------------------------------------------------
+    int numActiveStreams = 1;
 
-    // --- FX chain types (set by UI, read by DSP) ---
-    std::array<FxType, MAX_FX> fxChain {};   // all None by default
+    struct StreamState
+    {
+        bool  enabled      = true;
+        int   numFilters   = 0;
+        int   numFx        = 0;
+        std::array<FxType, MAX_STREAM_FX> fxTypes {};
+    };
+    std::array<StreamState, MAX_STREAMS> streams;
 
-    // --- Level metering (written by audio thread, read by UI timer) ---
+    // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
 
-    // --- Sample modules ---
+    // --- Sample modules (kept for future sample-player streams) ---
     struct SampleModule
     {
         juce::AudioBuffer<float> buffer;
@@ -134,46 +116,96 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    static const juce::StringArray& fxParamIDs();
+    static const juce::StringArray& eqParamIDs();
     void setEQBand (int i, float gainDB);
 
-    // --- Synth engine ---
-    std::array<Voice,     MAX_VOICES>  voices;
-    std::array<SVFilter,  MAX_FILTERS> filters;
-    std::array<LFOGen,    MAX_LFOS>    lfos;
+    // -----------------------------------------------------------------------
+    // DSP state — one copy per stream
+    // -----------------------------------------------------------------------
+    struct OscSlot
+    {
+        bool  en = false;
+        int   type = 1, octave = 0, semitone = 0, unisonVoices = 1;
+        float gainLin = 1.0f, detune = 0.0f, phase = 0.0f, pulseWidth = 0.5f;
+        float pan = 0.0f, velSens = 1.0f, unisonSpread = 15.0f;
+        float att = 0.01f, dec = 0.1f, sus = 0.7f, rel = 0.3f;
+    };
 
-    struct SynthSlot  { bool en; int type, octave, semitone, unisonVoices;
-                        float gainLin, detune, phase, pulseWidth, pan, velSens, unisonSpread,
-                              att, dec, sus, rel; };
-    struct FilterSlot { bool en; int type; float cutoff, res; };
-    struct LFOSlot    { bool en; int shape; float rate, depth, target, tgtSlot; };
-    struct SampleSlot { bool en, loop; int root; float gainLin, att, dec, sus, rel; };
+    struct FltSlot
+    {
+        bool  en = false;
+        int   type = 0;
+        float cutoff = 8000.0f, res = 0.707f;
+    };
 
-    std::array<SynthSlot,  MAX_SYNTHS>  synthSlots;
-    std::array<FilterSlot, MAX_FILTERS> filterSlots;
-    std::array<LFOSlot,    MAX_LFOS>    lfoSlots;
-    std::array<SampleSlot, MAX_SAMPLES> sampleSlots;
+    struct StreamDSP
+    {
+        OscSlot osc;
+        std::array<FltSlot,  MAX_STREAM_FILTERS> filters {};
+        float level = 1.0f, pan = 0.0f;
 
-    std::array<float, MAX_FILTERS> lfoFltMod {};
-    std::array<float, MAX_SYNTHS>  lfoVolMod {};
-    std::array<float, MAX_SYNTHS>  lfoDetMod {};
+        // Per-stream DSP objects
+        std::array<SVFilter,  MAX_STREAM_FILTERS> svFilters;
+        std::array<FxSlotDSP, MAX_STREAM_FX>      fxDSP;
+        juce::AudioBuffer<float>                   scratch;
+        bool prepared = false;
 
-    void loadParams();
-    void computeLFOs (float sampleRate);
+        void prepare (const juce::dsp::ProcessSpec& spec)
+        {
+            scratch.setSize (2, (int) spec.maximumBlockSize, false, true, true);
+            for (auto& f : svFilters) f.reset();
+            for (auto& fx : fxDSP)   fx.prepare (spec);
+            prepared = true;
+        }
+    };
+
+    std::array<StreamDSP, MAX_STREAMS> streamDSP;
+
+    // -----------------------------------------------------------------------
+    // Voice pool — tagged by stream
+    // -----------------------------------------------------------------------
+    struct StreamVoice
+    {
+        bool  active     = false;
+        int   note       = -1;
+        int   streamIdx  = 0;
+        float velocity   = 1.0f;
+        float baseFreqHz = 0.0f;
+
+        OscillatorGen osc[MAX_UNISON];
+        ADSREnv       adsr;
+
+        void prepare (double sr) noexcept { adsr.setSampleRate (sr); }
+        void reset()  noexcept
+        {
+            active = false; note = -1;
+            for (auto& o : osc) o.reset();
+            adsr.reset();
+        }
+        bool isActive() const noexcept { return adsr.isActive(); }
+    };
+
+    static constexpr int STREAM_VOICES = 16;
+    std::array<StreamVoice, STREAM_VOICES> voices;
+
+    // -----------------------------------------------------------------------
+    // Internal methods
+    // -----------------------------------------------------------------------
+    void loadStreamParams (int s);
     void processMidi (const juce::MidiBuffer&);
-    void renderSynth (juce::AudioBuffer<float>&);
-    void renderSamples (juce::AudioBuffer<float>&);
-    void applyFilters (juce::AudioBuffer<float>&);
-    void applyFxChain (juce::AudioBuffer<float>&);
+    void renderStream (int s, juce::AudioBuffer<float>& master);
+    void applyStreamFilters (StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
+    void applyStreamFx (int s, StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
 
-    int  findFreeVoice()    const noexcept;
-    int  findVoiceToSteal() const noexcept;
-    void startVoice (int vi, int note, float velocity);
+    int  findFreeVoice  (int streamIdx) const noexcept;
+    int  findVoiceToSteal (int streamIdx) const noexcept;
+    void startVoice (int vi, int note, float velocity, int streamIdx);
     void stopNote   (int note);
     void allNotesOff();
 
-    // --- EQ ---
-    void updateEQ();
+    // -----------------------------------------------------------------------
+    // Global EQ (master bus)
+    // -----------------------------------------------------------------------
     static constexpr float EQ_FREQUENCIES[NUM_EQ_BANDS] = {
         31.25f, 62.5f, 125.0f, 250.0f, 500.0f,
         1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f
@@ -186,30 +218,7 @@ private:
 
     std::array<StereoFilter, NUM_EQ_BANDS> eqBands;
     bool eqEnabled = false;
-
-    // --- FX chain DSP objects (pre-allocated, used based on fxChain type) ---
-    struct FxSlotDSP
-    {
-        juce::dsp::Compressor<float>  compressor;
-        juce::dsp::Gain<float>        makeup;
-        juce::dsp::NoiseGate<float>   gate;
-        juce::dsp::Reverb             reverb;
-        StereoFilter                  distToneFilter;
-        bool prepared = false;
-
-        void prepare (const juce::dsp::ProcessSpec& spec)
-        {
-            compressor.prepare (spec);
-            makeup.prepare (spec);
-            gate.prepare (spec);
-            reverb.prepare (spec);
-            distToneFilter.prepare (spec);
-            *distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
-                spec.sampleRate, 4000.0);
-            prepared = true;
-        }
-    };
-    std::array<FxSlotDSP, MAX_FX> fxDSP;
+    void updateEQ();
 
     juce::dsp::ProcessSpec processSpec { 44100.0, 512, 2 };
     bool prepared = false;

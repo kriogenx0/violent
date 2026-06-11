@@ -8,214 +8,182 @@ ViolentAudioProcessor::createParameterLayout()
     using namespace juce;
     std::vector<std::unique_ptr<RangedAudioParameter>> params;
 
-    // ---- Sample slots ----
-    for (int i = 0; i < MAX_SAMPLES; ++i)
+    // ---- Streams ----
+    for (int s = 0; s < MAX_STREAMS; ++s)
     {
+        const String sn = " Stream " + String (s + 1) + " ";
+
         params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::smpEn (i), "Sample " + String (i + 1) + " Enabled", false));
-        params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::smpRoot (i), "Sample " + String (i + 1) + " Root Note",
-            0, 127, 60));
+            ParamIDs::streamEn (s),    sn + "Enabled", s == 0));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::smpGain (i), "Sample " + String (i + 1) + " Gain",
-            NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f,
-            AudioParameterFloatAttributes().withLabel ("dB")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::smpAtt (i), "Sample " + String (i + 1) + " Attack",
-            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.005f,
-            AudioParameterFloatAttributes().withLabel ("s")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::smpDec (i), "Sample " + String (i + 1) + " Decay",
-            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.1f,
-            AudioParameterFloatAttributes().withLabel ("s")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::smpSus (i), "Sample " + String (i + 1) + " Sustain",
+            ParamIDs::streamLevel (s), sn + "Level",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::smpRel (i), "Sample " + String (i + 1) + " Release",
-            NormalisableRange<float> (0.001f, 8.0f, 0.001f, 0.3f), 0.2f,
-            AudioParameterFloatAttributes().withLabel ("s")));
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::smpLoop (i), "Sample " + String (i + 1) + " Loop", false));
-    }
+            ParamIDs::streamPan (s),   sn + "Pan",
+            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
 
-    // ---- Synth slots ----
-    for (int i = 0; i < MAX_SYNTHS; ++i)
-    {
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::synthEn (i), "Synth " + String (i + 1) + " Enabled", i == 0));
+        // Source (osc/sampler unified)
         params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::synthType (i), "Synth " + String (i + 1) + " Wave",
-            StringArray { "Sine", "Saw", "Square", "Triangle", "Noise" }, 1));
+            ParamIDs::stSrcType (s),      sn + "Source Type",
+            StringArray { "Sine", "Saw", "Square", "Triangle", "Noise", "Sample" }, 1));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthGain (i), "Synth " + String (i + 1) + " Gain",
+            ParamIDs::stSrcGain (s),      sn + "Source Gain",
             NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f,
             AudioParameterFloatAttributes().withLabel ("dB")));
         params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::synthOct (i), "Synth " + String (i + 1) + " Octave", -3, 3, 0));
+            ParamIDs::stSrcOct (s),       sn + "Source Octave", -3, 3, 0));
         params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::synthSemi (i), "Synth " + String (i + 1) + " Semitone", -12, 12, 0));
+            ParamIDs::stSrcSemi (s),      sn + "Source Semitone", -12, 12, 0));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthDet (i), "Synth " + String (i + 1) + " Detune",
+            ParamIDs::stSrcDet (s),       sn + "Source Detune",
             NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f,
             AudioParameterFloatAttributes().withLabel ("ct")));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthPhase (i), "Synth " + String (i + 1) + " Phase",
+            ParamIDs::stSrcPhase (s),     sn + "Source Phase",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthPW (i), "Synth " + String (i + 1) + " Pulse Width",
+            ParamIDs::stSrcPW (s),        sn + "Source Pulse Width",
             NormalisableRange<float> (0.05f, 0.95f, 0.01f), 0.5f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthPan (i), "Synth " + String (i + 1) + " Pan",
+            ParamIDs::stSrcPan (s),       sn + "Source Pan",
             NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthVelS (i), "Synth " + String (i + 1) + " Velocity Sensitivity",
+            ParamIDs::stSrcVel (s),       sn + "Source Velocity",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
         params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::synthUni (i), "Synth " + String (i + 1) + " Unison Voices", 1, 8, 1));
+            ParamIDs::stSrcUni (s),       sn + "Source Unison", 1, 8, 1));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthUniSpread (i), "Synth " + String (i + 1) + " Unison Spread",
+            ParamIDs::stSrcUniSpread (s), sn + "Source Unison Spread",
             NormalisableRange<float> (0.0f, 100.0f, 0.1f), 15.0f,
             AudioParameterFloatAttributes().withLabel ("ct")));
+        params.push_back (std::make_unique<AudioParameterBool> (
+            ParamIDs::stSrcLoop (s),      sn + "Source Loop", false));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthAtt (i), "Synth " + String (i + 1) + " Attack",
+            ParamIDs::stSrcAtt (s), sn + "Source Attack",
             NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.01f,
             AudioParameterFloatAttributes().withLabel ("s")));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthDec (i), "Synth " + String (i + 1) + " Decay",
+            ParamIDs::stSrcDec (s), sn + "Source Decay",
             NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.1f,
             AudioParameterFloatAttributes().withLabel ("s")));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthSus (i), "Synth " + String (i + 1) + " Sustain",
+            ParamIDs::stSrcSus (s), sn + "Source Sustain",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.7f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::synthRel (i), "Synth " + String (i + 1) + " Release",
+            ParamIDs::stSrcRel (s), sn + "Source Release",
             NormalisableRange<float> (0.001f, 8.0f, 0.001f, 0.3f), 0.3f,
             AudioParameterFloatAttributes().withLabel ("s")));
+
+        // Filters
+        for (int f = 0; f < MAX_STREAM_FILTERS; ++f)
+        {
+            const String fn = sn + "Filter " + String (f + 1) + " ";
+            params.push_back (std::make_unique<AudioParameterBool> (
+                ParamIDs::stFltEn (s, f), fn + "Enabled", false));
+            params.push_back (std::make_unique<AudioParameterChoice> (
+                ParamIDs::stFltType (s, f), fn + "Type",
+                StringArray { "LP", "HP", "BP", "Notch" }, 0));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFltCut (s, f), fn + "Cutoff",
+                NormalisableRange<float> (20.0f, 20000.0f, 0.1f, 0.3f), 8000.0f,
+                AudioParameterFloatAttributes().withLabel ("Hz")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFltRes (s, f), fn + "Resonance",
+                NormalisableRange<float> (0.1f, 12.0f, 0.01f, 0.5f), 0.707f));
+        }
+
+        // FX
+        for (int x = 0; x < MAX_STREAM_FX; ++x)
+        {
+            const String xn = sn + "FX" + String (x) + " ";
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxDrive    (s, x), xn + "Drive",
+                NormalisableRange<float> (1.0f, 100.0f, 0.1f, 0.4f), 1.0f));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxTone     (s, x), xn + "Tone",
+                NormalisableRange<float> (200.0f, 8000.0f, 1.0f, 0.5f), 4000.0f,
+                AudioParameterFloatAttributes().withLabel ("Hz")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxLevel    (s, x), xn + "Level",
+                NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f,
+                AudioParameterFloatAttributes().withLabel ("dB")));
+            params.push_back (std::make_unique<AudioParameterChoice> (
+                ParamIDs::stFxDistType (s, x), xn + "Dist Type",
+                StringArray { "Soft Clip", "Hard Clip", "Fuzz" }, 0));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxThresh   (s, x), xn + "Threshold",
+                NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -12.0f,
+                AudioParameterFloatAttributes().withLabel ("dB")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxRatio    (s, x), xn + "Ratio",
+                NormalisableRange<float> (1.0f, 20.0f, 0.1f, 0.5f), 4.0f));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxAttack   (s, x), xn + "Attack",
+                NormalisableRange<float> (0.1f, 200.0f, 0.1f, 0.5f), 10.0f,
+                AudioParameterFloatAttributes().withLabel ("ms")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxRelease  (s, x), xn + "Release",
+                NormalisableRange<float> (10.0f, 2000.0f, 1.0f, 0.5f), 100.0f,
+                AudioParameterFloatAttributes().withLabel ("ms")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxMakeup   (s, x), xn + "Makeup",
+                NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f,
+                AudioParameterFloatAttributes().withLabel ("dB")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxRoom     (s, x), xn + "Room",
+                NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxDamping  (s, x), xn + "Damping",
+                NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxWet      (s, x), xn + "Wet",
+                NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.33f));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::stFxWidth    (s, x), xn + "Width",
+                NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
+        }
     }
 
-    // ---- Filter slots ----
-    for (int i = 0; i < MAX_FILTERS; ++i)
-    {
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::fltEn (i), "Filter " + String (i + 1) + " Enabled", false));
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::fltType (i), "Filter " + String (i + 1) + " Type",
-            StringArray { "Low Pass", "High Pass", "Band Pass", "Notch" }, 0));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fltCut (i), "Filter " + String (i + 1) + " Cutoff",
-            NormalisableRange<float> (20.0f, 20000.0f, 0.1f, 0.3f), 8000.0f,
-            AudioParameterFloatAttributes().withLabel ("Hz")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fltRes (i), "Filter " + String (i + 1) + " Resonance",
-            NormalisableRange<float> (0.1f, 12.0f, 0.01f, 0.5f), 0.707f));
-    }
-
-    // ---- LFO slots ----
-    for (int i = 0; i < MAX_LFOS; ++i)
-    {
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::lfoEn (i), "LFO " + String (i + 1) + " Enabled", false));
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::lfoShape (i), "LFO " + String (i + 1) + " Shape",
-            StringArray { "Sine", "Triangle", "Saw", "Square" }, 0));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::lfoRate (i), "LFO " + String (i + 1) + " Rate",
-            NormalisableRange<float> (0.01f, 20.0f, 0.01f, 0.4f), 1.0f,
-            AudioParameterFloatAttributes().withLabel ("Hz")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::lfoDepth (i), "LFO " + String (i + 1) + " Depth",
-            NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
-        // target: 0=None 1=Filter Cutoff 2=Osc Volume 3=Osc Detune
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::lfoTarget (i), "LFO " + String (i + 1) + " Target",
-            StringArray { "None", "Filter Cutoff", "Osc Volume", "Osc Detune" }, 0));
-        params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::lfoTgtSlt (i), "LFO " + String (i + 1) + " Target Slot",
-            0, 3, 0));
-    }
-
-    // ---- EQ ----
-    params.push_back (std::make_unique<AudioParameterBool> (ParamIDs::EQ_ENABLED, "EQ Enabled", true));
+    // ---- Global EQ ----
+    params.push_back (std::make_unique<AudioParameterBool> (
+        ParamIDs::EQ_ENABLED, "EQ Enabled", false));
     for (int i = 0; i < NUM_EQ_BANDS; ++i)
         params.push_back (std::make_unique<AudioParameterFloat> (
             ParamIDs::eqBand (i), "EQ Band " + String (i),
             NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
             AudioParameterFloatAttributes().withLabel ("dB")));
 
-    // ---- FX chain slots ----
-    for (int i = 0; i < MAX_FX; ++i)
+    // ---- Sample slots (legacy, kept for future use) ----
+    for (int i = 0; i < MAX_SAMPLES; ++i)
     {
-        // type stored as int in XML, not as an APVTS param (UI writes it directly)
+        params.push_back (std::make_unique<AudioParameterBool> (
+            ParamIDs::smpEn (i), "Sample " + String (i + 1) + " Enabled", false));
+        params.push_back (std::make_unique<AudioParameterInt> (
+            ParamIDs::smpRoot (i), "Sample " + String (i + 1) + " Root", 0, 127, 60));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxDrive    (i), "FX " + String (i) + " Drive",
-            NormalisableRange<float> (1.0f, 100.0f, 0.1f, 0.4f), 1.0f));
+            ParamIDs::smpGain (i), "Sample " + String (i + 1) + " Gain",
+            NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxTone     (i), "FX " + String (i) + " Tone",
-            NormalisableRange<float> (200.0f, 8000.0f, 1.0f, 0.5f), 4000.0f,
-            AudioParameterFloatAttributes().withLabel ("Hz")));
+            ParamIDs::smpAtt  (i), "Sample " + String (i + 1) + " Attack",
+            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.005f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxLevel    (i), "FX " + String (i) + " Level",
-            NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f,
-            AudioParameterFloatAttributes().withLabel ("dB")));
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::fxDistType (i), "FX " + String (i) + " Dist Type",
-            StringArray { "Soft Clip", "Hard Clip", "Fuzz" }, 0));
+            ParamIDs::smpDec  (i), "Sample " + String (i + 1) + " Decay",
+            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.1f));
         params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxThresh   (i), "FX " + String (i) + " Threshold",
-            NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -12.0f,
-            AudioParameterFloatAttributes().withLabel ("dB")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxRatio    (i), "FX " + String (i) + " Ratio",
-            NormalisableRange<float> (1.0f, 20.0f, 0.1f, 0.5f), 4.0f));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxAttack   (i), "FX " + String (i) + " Attack",
-            NormalisableRange<float> (0.1f, 200.0f, 0.1f, 0.5f), 10.0f,
-            AudioParameterFloatAttributes().withLabel ("ms")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxRelease  (i), "FX " + String (i) + " Release",
-            NormalisableRange<float> (10.0f, 2000.0f, 1.0f, 0.5f), 100.0f,
-            AudioParameterFloatAttributes().withLabel ("ms")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxMakeup   (i), "FX " + String (i) + " Makeup",
-            NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f,
-            AudioParameterFloatAttributes().withLabel ("dB")));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxRoom     (i), "FX " + String (i) + " Room",
-            NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxDamping  (i), "FX " + String (i) + " Damping",
-            NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxWet      (i), "FX " + String (i) + " Wet",
-            NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.33f));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::fxWidth    (i), "FX " + String (i) + " Width",
+            ParamIDs::smpSus  (i), "Sample " + String (i + 1) + " Sustain",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::smpRel  (i), "Sample " + String (i + 1) + " Release",
+            NormalisableRange<float> (0.001f, 8.0f, 0.001f, 0.3f), 0.2f));
+        params.push_back (std::make_unique<AudioParameterBool> (
+            ParamIDs::smpLoop (i), "Sample " + String (i + 1) + " Loop", false));
     }
 
     return { params.begin(), params.end() };
 }
 
 //==============================================================================
-ViolentAudioProcessor::ViolentAudioProcessor()
-    : AudioProcessor (BusesProperties()
-                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "Parameters", createParameterLayout())
-{
-    formatManager.registerBasicFormats();
-
-    for (const auto& id : fxParamIDs())
-        apvts.addParameterListener (id, this);
-}
-
-ViolentAudioProcessor::~ViolentAudioProcessor()
-{
-    for (const auto& id : fxParamIDs())
-        apvts.removeParameterListener (id, this);
-}
-
-const juce::StringArray& ViolentAudioProcessor::fxParamIDs()
+const juce::StringArray& ViolentAudioProcessor::eqParamIDs()
 {
     static const juce::StringArray ids {
         ParamIDs::EQ_ENABLED,
@@ -228,26 +196,37 @@ const juce::StringArray& ViolentAudioProcessor::fxParamIDs()
 }
 
 //==============================================================================
+ViolentAudioProcessor::ViolentAudioProcessor()
+    : AudioProcessor (BusesProperties()
+                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "Parameters", createParameterLayout())
+{
+    formatManager.registerBasicFormats();
+    for (const auto& id : eqParamIDs())
+        apvts.addParameterListener (id, this);
+}
+
+ViolentAudioProcessor::~ViolentAudioProcessor()
+{
+    for (const auto& id : eqParamIDs())
+        apvts.removeParameterListener (id, this);
+}
+
+//==============================================================================
 void ViolentAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     processSpec.sampleRate       = sampleRate;
     processSpec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
     processSpec.numChannels      = 2;
 
-    // Prepare synth engine
-    for (auto& v : voices)  v.prepare (sampleRate);
-    for (auto& f : filters) f.reset();
-    for (auto& l : lfos)    l.reset();
+    for (auto& v : voices) v.prepare (sampleRate);
 
-    // Prepare FX chain
-    for (int i = 0; i < NUM_EQ_BANDS; ++i)
-        setEQBand (i, 0.0f);
+    for (auto& dsp : streamDSP)
+        dsp.prepare (processSpec);
 
     for (auto& band : eqBands)
         band.prepare (processSpec);
-
-    for (auto& slot : fxDSP)
-        slot.prepare (processSpec);
+    setEQBand (0, 0.0f);   // init state
 
     prepared = true;
     updateEQ();
@@ -268,178 +247,113 @@ bool ViolentAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 }
 
 //==============================================================================
-void ViolentAudioProcessor::loadParams()
+void ViolentAudioProcessor::loadStreamParams (int s)
 {
-    const float sr = static_cast<float> (processSpec.sampleRate);
+    auto& dsp = streamDSP[(size_t) s];
+    auto& st  = streams[(size_t) s];
 
-    for (int i = 0; i < MAX_SAMPLES; ++i)
+    st.enabled = apvts.getRawParameterValue (ParamIDs::streamEn (s))->load() > 0.5f;
+    dsp.level  = apvts.getRawParameterValue (ParamIDs::streamLevel (s))->load();
+    dsp.pan    = apvts.getRawParameterValue (ParamIDs::streamPan   (s))->load();
+
+    auto& o    = dsp.osc;
+    o.en          = st.enabled;
+    o.type        = static_cast<int> (apvts.getRawParameterValue (ParamIDs::stSrcType (s))->load());
+    o.gainLin     = juce::Decibels::decibelsToGain (
+                        apvts.getRawParameterValue (ParamIDs::stSrcGain (s))->load());
+    o.octave      = static_cast<int> (apvts.getRawParameterValue (ParamIDs::stSrcOct  (s))->load());
+    o.semitone    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::stSrcSemi (s))->load());
+    o.detune      = apvts.getRawParameterValue (ParamIDs::stSrcDet       (s))->load();
+    o.phase       = apvts.getRawParameterValue (ParamIDs::stSrcPhase     (s))->load();
+    o.pulseWidth  = apvts.getRawParameterValue (ParamIDs::stSrcPW        (s))->load();
+    o.pan         = apvts.getRawParameterValue (ParamIDs::stSrcPan       (s))->load();
+    o.velSens     = apvts.getRawParameterValue (ParamIDs::stSrcVel       (s))->load();
+    o.unisonVoices= static_cast<int> (apvts.getRawParameterValue (ParamIDs::stSrcUni (s))->load());
+    o.unisonSpread= apvts.getRawParameterValue (ParamIDs::stSrcUniSpread (s))->load();
+    o.att         = apvts.getRawParameterValue (ParamIDs::stSrcAtt (s))->load();
+    o.dec         = apvts.getRawParameterValue (ParamIDs::stSrcDec (s))->load();
+    o.sus         = apvts.getRawParameterValue (ParamIDs::stSrcSus (s))->load();
+    o.rel         = apvts.getRawParameterValue (ParamIDs::stSrcRel (s))->load();
+
+    for (int f = 0; f < MAX_STREAM_FILTERS; ++f)
     {
-        auto& s   = sampleSlots[i];
-        s.en      = apvts.getRawParameterValue (ParamIDs::smpEn   (i))->load() > 0.5f;
-        s.root    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::smpRoot (i))->load());
-        s.gainLin = juce::Decibels::decibelsToGain (
-                       apvts.getRawParameterValue (ParamIDs::smpGain (i))->load());
-        s.att     = apvts.getRawParameterValue (ParamIDs::smpAtt  (i))->load();
-        s.dec     = apvts.getRawParameterValue (ParamIDs::smpDec  (i))->load();
-        s.sus     = apvts.getRawParameterValue (ParamIDs::smpSus  (i))->load();
-        s.rel     = apvts.getRawParameterValue (ParamIDs::smpRel  (i))->load();
-        s.loop    = apvts.getRawParameterValue (ParamIDs::smpLoop (i))->load() > 0.5f;
-    }
-
-    for (int i = 0; i < MAX_SYNTHS; ++i)
-    {
-        auto& s       = synthSlots[i];
-        s.en          = (i < numActiveSynths);
-        s.type        = static_cast<int> (apvts.getRawParameterValue (ParamIDs::synthType (i))->load());
-        s.gainLin     = juce::Decibels::decibelsToGain (
-                           apvts.getRawParameterValue (ParamIDs::synthGain (i))->load());
-        s.octave      = static_cast<int> (apvts.getRawParameterValue (ParamIDs::synthOct  (i))->load());
-        s.semitone    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::synthSemi (i))->load());
-        s.detune      = apvts.getRawParameterValue (ParamIDs::synthDet  (i))->load();
-        s.phase       = apvts.getRawParameterValue (ParamIDs::synthPhase(i))->load();
-        s.pulseWidth  = apvts.getRawParameterValue (ParamIDs::synthPW   (i))->load();
-        s.pan         = apvts.getRawParameterValue (ParamIDs::synthPan  (i))->load();
-        s.velSens     = apvts.getRawParameterValue (ParamIDs::synthVelS (i))->load();
-        s.unisonVoices= static_cast<int> (apvts.getRawParameterValue (ParamIDs::synthUni (i))->load());
-        s.unisonSpread= apvts.getRawParameterValue (ParamIDs::synthUniSpread (i))->load();
-        s.att         = apvts.getRawParameterValue (ParamIDs::synthAtt  (i))->load();
-        s.dec         = apvts.getRawParameterValue (ParamIDs::synthDec  (i))->load();
-        s.sus         = apvts.getRawParameterValue (ParamIDs::synthSus  (i))->load();
-        s.rel         = apvts.getRawParameterValue (ParamIDs::synthRel  (i))->load();
-    }
-
-    for (int i = 0; i < MAX_FILTERS; ++i)
-    {
-        auto& f  = filterSlots[i];
-        f.en     = apvts.getRawParameterValue (ParamIDs::fltEn   (i))->load() > 0.5f;
-        f.type   = static_cast<int> (apvts.getRawParameterValue (ParamIDs::fltType (i))->load());
-        f.cutoff = apvts.getRawParameterValue (ParamIDs::fltCut  (i))->load();
-        f.res    = apvts.getRawParameterValue (ParamIDs::fltRes  (i))->load();
-    }
-
-    for (int i = 0; i < MAX_LFOS; ++i)
-    {
-        auto& l   = lfoSlots[i];
-        l.en      = apvts.getRawParameterValue (ParamIDs::lfoEn     (i))->load() > 0.5f;
-        l.shape   = static_cast<int> (apvts.getRawParameterValue (ParamIDs::lfoShape  (i))->load());
-        l.rate    = apvts.getRawParameterValue (ParamIDs::lfoRate   (i))->load();
-        l.depth   = apvts.getRawParameterValue (ParamIDs::lfoDepth  (i))->load();
-        l.target  = apvts.getRawParameterValue (ParamIDs::lfoTarget (i))->load();
-        l.tgtSlot = apvts.getRawParameterValue (ParamIDs::lfoTgtSlt (i))->load();
-    }
-
-    juce::ignoreUnused (sr);
-}
-
-void ViolentAudioProcessor::computeLFOs (float sampleRate)
-{
-    lfoFltMod.fill (0.0f);
-    lfoVolMod.fill (0.0f);
-    lfoDetMod.fill (0.0f);
-
-    for (int i = 0; i < MAX_LFOS; ++i)
-    {
-        const auto& l = lfoSlots[i];
-        if (!l.en) continue;
-
-        const float val  = lfos[i].tick (l.rate, sampleRate, l.shape) * l.depth;
-        const int   slot = static_cast<int> (l.tgtSlot);
-
-        switch (static_cast<int> (l.target))
-        {
-            case 1: // Filter Cutoff — scale by 3 octaves max
-                if (slot < MAX_FILTERS)
-                    lfoFltMod[slot] = val * filterSlots[slot].cutoff * 1.5f;
-                break;
-            case 2: // Osc Volume
-                if (slot < MAX_SYNTHS)
-                    lfoVolMod[slot] = val;
-                break;
-            case 3: // Osc Detune
-                if (slot < MAX_SYNTHS)
-                    lfoDetMod[slot] = val * 100.0f; // ±100 cents
-                break;
-            default: break;
-        }
+        auto& flt   = dsp.filters[(size_t) f];
+        flt.en      = apvts.getRawParameterValue (ParamIDs::stFltEn   (s, f))->load() > 0.5f;
+        flt.type    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::stFltType (s, f))->load());
+        flt.cutoff  = apvts.getRawParameterValue (ParamIDs::stFltCut  (s, f))->load();
+        flt.res     = apvts.getRawParameterValue (ParamIDs::stFltRes  (s, f))->load();
     }
 }
 
 //==============================================================================
 void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
 {
-    for (const auto metadata : midi)
+    for (const auto meta : midi)
     {
-        const auto msg = metadata.getMessage();
-        if (msg.isNoteOn (true))
-            startVoice (findFreeVoice() < 0 ? findVoiceToSteal() : findFreeVoice(),
-                        msg.getNoteNumber(), msg.getFloatVelocity());
-        else if (msg.isNoteOff (true))
+        const auto msg = meta.getMessage();
+        if (msg.isNoteOn())
+        {
+            const int   note = msg.getNoteNumber();
+            const float vel  = msg.getFloatVelocity();
+            for (int s = 0; s < numActiveStreams; ++s)
+            {
+                if (!streams[(size_t) s].enabled) continue;
+                int vi = findFreeVoice (s);
+                if (vi < 0) vi = findVoiceToSteal (s);
+                if (vi >= 0) startVoice (vi, note, vel, s);
+            }
+        }
+        else if (msg.isNoteOff())
+        {
             stopNote (msg.getNoteNumber());
+        }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
             allNotesOff();
+        }
     }
 }
 
-int ViolentAudioProcessor::findFreeVoice() const noexcept
+int ViolentAudioProcessor::findFreeVoice (int streamIdx) const noexcept
 {
-    for (int i = 0; i < MAX_VOICES; ++i)
-        if (!voices[i].active) return i;
+    for (int i = 0; i < STREAM_VOICES; ++i)
+        if (!voices[(size_t) i].active && voices[(size_t) i].streamIdx == streamIdx)
+            return i;
+    // Also accept unassigned (default streamIdx == 0)
+    for (int i = 0; i < STREAM_VOICES; ++i)
+        if (!voices[(size_t) i].active) return i;
     return -1;
 }
 
-int ViolentAudioProcessor::findVoiceToSteal() const noexcept
+int ViolentAudioProcessor::findVoiceToSteal (int streamIdx) const noexcept
 {
-    // Prefer a releasing voice; otherwise steal the one with the lowest note (oldest feel)
-    for (int i = 0; i < MAX_VOICES; ++i)
-        if (voices[i].active && !voices[i].isActive()) return i;
-    return 0; // fallback: steal voice 0
+    // Steal the oldest released voice from this stream, else any
+    for (int i = 0; i < STREAM_VOICES; ++i)
+        if (voices[(size_t) i].streamIdx == streamIdx && !voices[(size_t) i].isActive())
+            return i;
+    return 0;
 }
 
-void ViolentAudioProcessor::startVoice (int vi, int note, float velocity)
+void ViolentAudioProcessor::startVoice (int vi, int note, float velocity, int streamIdx)
 {
-    if (vi < 0 || vi >= MAX_VOICES) return;
-    auto& v      = voices[vi];
-    v.note       = note;
-    v.velocity   = velocity;
-    v.baseFreqHz = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (note));
-    v.active     = true;
+    auto& v       = voices[(size_t) vi];
+    v.note        = note;
+    v.streamIdx   = streamIdx;
+    v.velocity    = velocity;
+    v.baseFreqHz  = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (note));
+    v.active      = true;
 
-    for (int s = 0; s < MAX_SYNTHS; ++s)
-    {
-        for (auto& u : v.osc[s]) u.reset();
-        v.adsr[s].reset();
-        if (synthSlots[s].en)
-        {
-            const auto& sl = synthSlots[s];
-            // Set phase offset for each unison voice
-            for (int u = 0; u < sl.unisonVoices; ++u)
-                v.osc[s][u].reset (sl.phase);
-            v.adsr[s].setParams (sl.att, sl.dec, sl.sus, sl.rel);
-            v.adsr[s].noteOn();
-        }
-    }
-
-    for (int s = 0; s < MAX_SAMPLES; ++s)
-    {
-        v.smpPlayer[s].reset();
-        v.smpAdsr[s].reset();
-        if (sampleSlots[s].en && sampleModules[s].hasData)
-        {
-            const auto& sl = sampleSlots[s];
-            v.smpAdsr[s].setParams (sl.att, sl.dec, sl.sus, sl.rel);
-            v.smpAdsr[s].noteOn();
-        }
-    }
+    const auto& o = streamDSP[(size_t) streamIdx].osc;
+    for (auto& osc : v.osc) osc.reset (o.phase);
+    v.adsr.setParams (o.att, o.dec, o.sus, o.rel);
+    v.adsr.noteOn();
 }
 
 void ViolentAudioProcessor::stopNote (int note)
 {
     for (auto& v : voices)
-    {
-        if (!v.active || v.note != note) continue;
-        for (auto& a : v.adsr)    a.noteOff();
-        for (auto& a : v.smpAdsr) a.noteOff();
-    }
+        if (v.active && v.note == note)
+            v.adsr.noteOff();
 }
 
 void ViolentAudioProcessor::allNotesOff()
@@ -448,160 +362,200 @@ void ViolentAudioProcessor::allNotesOff()
 }
 
 //==============================================================================
-void ViolentAudioProcessor::renderSynth (juce::AudioBuffer<float>& buffer)
+void ViolentAudioProcessor::renderStream (int s, juce::AudioBuffer<float>& master)
 {
-    const int   numSamples = buffer.getNumSamples();
+    auto& dsp = streamDSP[(size_t) s];
+    auto& st  = streams[(size_t) s];
+    if (!st.enabled) return;
+
+    const int   numSamples = master.getNumSamples();
     const float sr         = static_cast<float> (processSpec.sampleRate);
-    // Per-voice normalization: equal-power mixing across synth layers
-    const float norm = 1.0f / static_cast<float> (MAX_SYNTHS);
+    const auto& o          = dsp.osc;
 
-    float* L = buffer.getWritePointer (0);
-    float* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : L;
+    // Clear scratch
+    dsp.scratch.setSize (2, numSamples, false, false, true);
+    dsp.scratch.clear();
 
+    float* L = dsp.scratch.getWritePointer (0);
+    float* R = dsp.scratch.getWritePointer (1);
+
+    // Render all voices belonging to this stream
+    bool anyActive = false;
     for (auto& v : voices)
     {
-        if (!v.active) continue;
+        if (!v.active || v.streamIdx != s) continue;
+        anyActive = true;
 
-        // Update LFO modulation for this voice
-        for (int s = 0; s < MAX_SYNTHS; ++s)
-        {
-            v.detuneModCents[s] = lfoDetMod[s];
-            v.volumeModMult[s]  = lfoVolMod[s];
-        }
+        const float pitchCents = o.detune + (o.octave * 12 + o.semitone) * 100.0f;
+        const int   nUni       = o.unisonVoices;
+        const float vol        = o.gainLin
+                                 * (1.0f - o.velSens * (1.0f - v.velocity));
 
         for (int n = 0; n < numSamples; ++n)
         {
-            float sampleL = 0.0f, sampleR = 0.0f;
+            const float env = v.adsr.tick();
+            float uniL = 0.0f, uniR = 0.0f;
 
-            for (int s = 0; s < MAX_SYNTHS; ++s)
+            for (int u = 0; u < nUni; ++u)
             {
-                if (!synthSlots[s].en) continue;
+                const float uSpread = nUni > 1
+                    ? o.unisonSpread * (u / (float)(nUni - 1) - 0.5f) * 2.0f
+                    : 0.0f;
 
-                const auto& sl       = synthSlots[s];
-                const float pitchCents = sl.detune + v.detuneModCents[s]
-                                       + (sl.octave * 12 + sl.semitone) * 100.0f;
-                const float vol      = sl.gainLin
-                                     * juce::jmax (0.0f, 1.0f + v.volumeModMult[s])
-                                     * (1.0f - sl.velSens * (1.0f - v.velocity));
-                const float env      = v.adsr[s].tick();
-
-                // Unison: spread voices evenly across unisonSpread cents
-                float uniSum = 0.0f;
-                const int nUni = sl.unisonVoices;
-                for (int u = 0; u < nUni; ++u)
+                float sample;
+                if (o.type == (int) SourceType::Sample)
                 {
-                    const float uSpread = nUni > 1
-                        ? sl.unisonSpread * (u / (float)(nUni - 1) - 0.5f) * 2.0f
-                        : 0.0f;
-                    uniSum += v.osc[s][u].tick (v.baseFreqHz, pitchCents + uSpread,
-                                                sr, sl.type, sl.pulseWidth);
+                    // Sample playback — use the stream's sample slot if loaded
+                    // (stream index maps to sample slot index)
+                    juce::SpinLock::ScopedTryLockType tryLock (sampleModules[(size_t) s].lock);
+                    if (tryLock.isLocked() && sampleModules[(size_t) s].hasData)
+                    {
+                        const auto& sm   = sampleModules[(size_t) s];
+                        const double pr  = std::pow (2.0, (v.note - 60) / 12.0);
+                        sample = v.osc[u].phase < (float) sm.buffer.getNumSamples()
+                                   ? sm.buffer.getSample (0, (int) v.osc[u].phase)
+                                   : 0.0f;
+                        v.osc[u].phase += (float) pr;
+                        if (v.osc[u].phase >= sm.buffer.getNumSamples()) v.osc[u].phase = 0.0f;
+                    }
+                    else { sample = 0.0f; }
                 }
-                uniSum /= static_cast<float> (nUni);
+                else
+                {
+                    sample = v.osc[u].tick (v.baseFreqHz, pitchCents + uSpread,
+                                            sr, o.type, o.pulseWidth);
+                }
 
-                const float out  = uniSum * env * vol;
-                const float panL = juce::jlimit (0.0f, 1.0f, 1.0f - sl.pan);
-                const float panR = juce::jlimit (0.0f, 1.0f, 1.0f + sl.pan);
-                sampleL += out * panL;
-                sampleR += out * panR;
+                const float panL = juce::jlimit (0.0f, 1.0f, 1.0f - o.pan);
+                const float panR = juce::jlimit (0.0f, 1.0f, 1.0f + o.pan);
+                uniL += sample * panL;
+                uniR += sample * panR;
             }
 
-            sampleL *= norm * v.velocity;
-            sampleR *= norm * v.velocity;
-            L[n] += sampleL;
-            R[n] += sampleR;
+            const float out = (uniL > 0.0f || uniR > 0.0f
+                                   ? (uniL + uniR) / (float) nUni : 0.0f);
+            L[n] += uniL / (float) nUni * env * vol;
+            R[n] += uniR / (float) nUni * env * vol;
         }
 
-        if (!v.isActive())
-            v.active = false;
+        if (!v.isActive()) v.active = false;
     }
+
+    if (!anyActive) return;
+
+    // Stream filters
+    applyStreamFilters (dsp, st, dsp.scratch);
+
+    // Stream FX
+    applyStreamFx (s, dsp, st, dsp.scratch);
+
+    // Mix into master with level and pan
+    const float mixL = juce::jlimit (0.0f, 1.0f, dsp.level * (1.0f - dsp.pan));
+    const float mixR = juce::jlimit (0.0f, 1.0f, dsp.level * (1.0f + dsp.pan));
+    master.addFromWithRamp (0, 0, L, numSamples, mixL, mixL);
+    master.addFromWithRamp (1, 0, R, numSamples, mixR, mixR);
 }
 
-void ViolentAudioProcessor::renderSamples (juce::AudioBuffer<float>& buffer)
+void ViolentAudioProcessor::applyStreamFilters (StreamDSP& dsp, const StreamState& st,
+                                                 juce::AudioBuffer<float>& buf)
 {
-    const int   numSamples = buffer.getNumSamples();
-    const float norm       = 1.0f / static_cast<float> (MAX_SAMPLES);
-
-    float* L = buffer.getWritePointer (0);
-    float* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : L;
-
-    for (auto& v : voices)
-    {
-        if (!v.active) continue;
-
-        for (int s = 0; s < MAX_SAMPLES; ++s)
-        {
-            if (!sampleSlots[s].en) continue;
-
-            // Try-lock: skip this slot if message thread is loading a new sample
-            juce::SpinLock::ScopedTryLockType tryLock (sampleModules[s].lock);
-            if (!tryLock.isLocked() || !sampleModules[s].hasData) continue;
-
-            const auto&   sm      = sampleModules[s];
-            const auto&   sl      = sampleSlots[s];
-            const double  pitchR  = std::pow (2.0, (v.note - sl.root) / 12.0);
-            const bool    loop    = sl.loop;
-            const int     bufLen  = sm.buffer.getNumSamples();
-
-            for (int n = 0; n < numSamples; ++n)
-            {
-                if (v.smpPlayer[s].isFinished (bufLen, loop)) break;
-                const float smpOut = v.smpPlayer[s].tick (sm.buffer, pitchR, loop);
-                const float env    = v.smpAdsr[s].tick();
-                const float out    = smpOut * env * sl.gainLin * v.velocity * norm;
-                L[n] += out;
-                R[n] += out;
-            }
-        }
-    }
-}
-
-void ViolentAudioProcessor::loadSample (int slotIndex, const juce::File& file)
-{
-    if (slotIndex < 0 || slotIndex >= MAX_SAMPLES) return;
-
-    std::unique_ptr<juce::AudioFormatReader> reader (
-        formatManager.createReaderFor (file));
-
-    if (reader == nullptr) return;
-
-    // Read into a temp buffer on the message thread
-    const int numCh      = static_cast<int> (reader->numChannels);
-    const int numSamples = static_cast<int> (reader->lengthInSamples);
-
-    juce::AudioBuffer<float> tempBuf (numCh, numSamples);
-    reader->read (&tempBuf, 0, numSamples, 0, true, true);
-
-    // Swap into the sample module under lock
-    auto& sm = sampleModules[slotIndex];
-    {
-        juce::SpinLock::ScopedLockType lock (sm.lock);
-        sm.buffer   = std::move (tempBuf);
-        sm.filePath = file.getFullPathName();
-        sm.hasData  = true;
-    }
-}
-
-//==============================================================================
-void ViolentAudioProcessor::applyFilters (juce::AudioBuffer<float>& buffer)
-{
-    const int   numSamples = buffer.getNumSamples();
+    const int   numSamples = buf.getNumSamples();
     const float sr         = static_cast<float> (processSpec.sampleRate);
-    const int   numCh      = buffer.getNumChannels();
+    const int   numCh      = buf.getNumChannels();
 
-    for (int fi = 0; fi < MAX_FILTERS; ++fi)
+    for (int f = 0; f < st.numFilters; ++f)
     {
-        if (!filterSlots[fi].en) continue;
+        const auto& flt = dsp.filters[(size_t) f];
+        if (!flt.en) continue;
 
-        const auto& f      = filterSlots[fi];
-        const float cutoff = juce::jlimit (20.0f, sr * 0.49f,
-                                           f.cutoff + lfoFltMod[fi]);
-        filters[fi].setCoefficients (cutoff, f.res, sr);
+        dsp.svFilters[(size_t) f].setCoefficients (flt.cutoff, flt.res, sr);
 
         for (int ch = 0; ch < numCh; ++ch)
         {
-            float* data = buffer.getWritePointer (ch);
+            float* data = buf.getWritePointer (ch);
             for (int n = 0; n < numSamples; ++n)
-                data[n] = filters[fi].process (ch, data[n], f.type);
+                data[n] = dsp.svFilters[(size_t) f].process (ch, data[n], flt.type);
+        }
+    }
+}
+
+void ViolentAudioProcessor::applyStreamFx (int s, StreamDSP& dsp, const StreamState& st,
+                                            juce::AudioBuffer<float>& buf)
+{
+    juce::dsp::AudioBlock<float> block (buf);
+    juce::dsp::ProcessContextReplacing<float> ctx (block);
+
+    for (int x = 0; x < st.numFx; ++x)
+    {
+        auto& fxdsp = dsp.fxDSP[(size_t) x];
+        const FxType type = st.fxTypes[(size_t) x];
+
+        switch (type)
+        {
+            case FxType::Distortion:
+            {
+                const float drive = apvts.getRawParameterValue (ParamIDs::stFxDrive    (s, x))->load();
+                const float level = juce::Decibels::decibelsToGain (
+                                        apvts.getRawParameterValue (ParamIDs::stFxLevel (s, x))->load());
+                const float tone  = apvts.getRawParameterValue (ParamIDs::stFxTone     (s, x))->load();
+                const int   dtype = static_cast<int> (
+                                        apvts.getRawParameterValue (ParamIDs::stFxDistType (s, x))->load());
+
+                *fxdsp.distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
+                    processSpec.sampleRate, static_cast<double> (tone));
+
+                for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                {
+                    float* data = buf.getWritePointer (ch);
+                    for (int n = 0; n < buf.getNumSamples(); ++n)
+                    {
+                        float x2 = data[n] * drive;
+                        switch (dtype)
+                        {
+                            case 0: x2 = std::tanh (x2); break;
+                            case 1: x2 = juce::jlimit (-1.0f, 1.0f, x2); break;
+                            case 2:
+                                x2 = std::tanh (x2 * 1.5f) + 0.1f * std::sin (x2 * juce::MathConstants<float>::pi);
+                                x2 = juce::jlimit (-1.0f, 1.0f, x2);
+                                break;
+                            default: x2 = std::tanh (x2); break;
+                        }
+                        data[n] = x2 * level;
+                    }
+                }
+                fxdsp.distToneFilter.process (ctx);
+                break;
+            }
+            case FxType::Compressor:
+                fxdsp.compressor.setThreshold (apvts.getRawParameterValue (ParamIDs::stFxThresh  (s, x))->load());
+                fxdsp.compressor.setRatio     (apvts.getRawParameterValue (ParamIDs::stFxRatio   (s, x))->load());
+                fxdsp.compressor.setAttack    (apvts.getRawParameterValue (ParamIDs::stFxAttack  (s, x))->load());
+                fxdsp.compressor.setRelease   (apvts.getRawParameterValue (ParamIDs::stFxRelease (s, x))->load());
+                fxdsp.makeup.setGainDecibels  (apvts.getRawParameterValue (ParamIDs::stFxMakeup  (s, x))->load());
+                fxdsp.compressor.process (ctx);
+                fxdsp.makeup.process (ctx);
+                break;
+            case FxType::Gate:
+                fxdsp.gate.setThreshold (apvts.getRawParameterValue (ParamIDs::stFxThresh  (s, x))->load());
+                fxdsp.gate.setRatio     (apvts.getRawParameterValue (ParamIDs::stFxRatio   (s, x))->load());
+                fxdsp.gate.setAttack    (apvts.getRawParameterValue (ParamIDs::stFxAttack  (s, x))->load());
+                fxdsp.gate.setRelease   (apvts.getRawParameterValue (ParamIDs::stFxRelease (s, x))->load());
+                fxdsp.gate.process (ctx);
+                break;
+            case FxType::Reverb:
+            {
+                juce::dsp::Reverb::Parameters p;
+                p.roomSize   = apvts.getRawParameterValue (ParamIDs::stFxRoom    (s, x))->load();
+                p.damping    = apvts.getRawParameterValue (ParamIDs::stFxDamping (s, x))->load();
+                p.wetLevel   = apvts.getRawParameterValue (ParamIDs::stFxWet     (s, x))->load();
+                p.dryLevel   = 1.0f - p.wetLevel;
+                p.width      = apvts.getRawParameterValue (ParamIDs::stFxWidth   (s, x))->load();
+                p.freezeMode = 0.0f;
+                fxdsp.reverb.setParameters (p);
+                fxdsp.reverb.process (ctx);
+                break;
+            }
+            default: break;
         }
     }
 }
@@ -617,131 +571,31 @@ void ViolentAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     buffer.clear();
 
-    // 1. Load param snapshots from APVTS (atomic reads, done once per block)
-    loadParams();
+    // Load params for all active streams
+    for (int s = 0; s < numActiveStreams; ++s)
+        loadStreamParams (s);
 
-    // 2. Advance LFOs for this block (block-rate modulation)
-    computeLFOs (static_cast<float> (processSpec.sampleRate));
-
-    // 3. Process MIDI events
+    // MIDI
     processMidi (midiMessages);
 
-    // 4. Render synthesizer voices (oscillators)
-    renderSynth (buffer);
+    // Render each stream into master
+    for (int s = 0; s < numActiveStreams; ++s)
+        renderStream (s, buffer);
 
-    // 5. Render sample voices
-    renderSamples (buffer);
-
-    // 6. Apply synth filters
-    applyFilters (buffer);
-
-    // 7. EQ
+    // Global EQ
+    if (eqEnabled)
     {
         juce::dsp::AudioBlock<float> block (buffer);
         juce::dsp::ProcessContextReplacing<float> ctx (block);
-        eqEnabled = apvts.getRawParameterValue (ParamIDs::EQ_ENABLED)->load() > 0.5f;
-        if (eqEnabled)
-            for (auto& band : eqBands)
-                band.process (ctx);
+        for (auto& band : eqBands) band.process (ctx);
     }
 
-    // 8. FX chain (dynamic, ordered)
-    applyFxChain (buffer);
-
-    // 9. Level metering
+    // Level metering
     levelL.store (buffer.getMagnitude (0, 0, buffer.getNumSamples()), std::memory_order_relaxed);
     levelR.store (buffer.getNumChannels() > 1
                       ? buffer.getMagnitude (1, 0, buffer.getNumSamples())
                       : levelL.load (std::memory_order_relaxed),
                   std::memory_order_relaxed);
-}
-
-//==============================================================================
-void ViolentAudioProcessor::applyFxChain (juce::AudioBuffer<float>& buffer)
-{
-    juce::dsp::AudioBlock<float> block (buffer);
-    juce::dsp::ProcessContextReplacing<float> ctx (block);
-
-    for (int i = 0; i < numActiveFx; ++i)
-    {
-        auto& dsp = fxDSP[(size_t) i];
-
-        switch (fxChain[(size_t) i])
-        {
-            case FxType::Distortion:
-            {
-                const float drive = apvts.getRawParameterValue (ParamIDs::fxDrive (i))->load();
-                const float level = juce::Decibels::decibelsToGain (
-                                        apvts.getRawParameterValue (ParamIDs::fxLevel (i))->load());
-                const int   type  = static_cast<int> (
-                                        apvts.getRawParameterValue (ParamIDs::fxDistType (i))->load());
-                const float tone  = apvts.getRawParameterValue (ParamIDs::fxTone (i))->load();
-
-                *dsp.distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
-                    processSpec.sampleRate, static_cast<double> (tone));
-
-                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                {
-                    float* data = buffer.getWritePointer (ch);
-                    for (int s = 0; s < buffer.getNumSamples(); ++s)
-                    {
-                        float x = data[s] * drive;
-                        switch (type)
-                        {
-                            case 0: x = std::tanh (x); break;
-                            case 1: x = juce::jlimit (-1.0f, 1.0f, x); break;
-                            case 2:
-                                x = std::tanh (x * 1.5f) + 0.1f * std::sin (x * juce::MathConstants<float>::pi);
-                                x = juce::jlimit (-1.0f, 1.0f, x);
-                                break;
-                            default: x = std::tanh (x); break;
-                        }
-                        data[s] = x * level;
-                    }
-                }
-                dsp.distToneFilter.process (ctx);
-                break;
-            }
-
-            case FxType::Compressor:
-            {
-                dsp.compressor.setThreshold (apvts.getRawParameterValue (ParamIDs::fxThresh  (i))->load());
-                dsp.compressor.setRatio     (apvts.getRawParameterValue (ParamIDs::fxRatio   (i))->load());
-                dsp.compressor.setAttack    (apvts.getRawParameterValue (ParamIDs::fxAttack  (i))->load());
-                dsp.compressor.setRelease   (apvts.getRawParameterValue (ParamIDs::fxRelease (i))->load());
-                dsp.makeup.setGainDecibels  (apvts.getRawParameterValue (ParamIDs::fxMakeup  (i))->load());
-                dsp.compressor.process (ctx);
-                dsp.makeup.process (ctx);
-                break;
-            }
-
-            case FxType::Gate:
-            {
-                dsp.gate.setThreshold (apvts.getRawParameterValue (ParamIDs::fxThresh  (i))->load());
-                dsp.gate.setRatio     (apvts.getRawParameterValue (ParamIDs::fxRatio   (i))->load());
-                dsp.gate.setAttack    (apvts.getRawParameterValue (ParamIDs::fxAttack  (i))->load());
-                dsp.gate.setRelease   (apvts.getRawParameterValue (ParamIDs::fxRelease (i))->load());
-                dsp.gate.process (ctx);
-                break;
-            }
-
-            case FxType::Reverb:
-            {
-                juce::dsp::Reverb::Parameters p;
-                p.roomSize   = apvts.getRawParameterValue (ParamIDs::fxRoom    (i))->load();
-                p.damping    = apvts.getRawParameterValue (ParamIDs::fxDamping (i))->load();
-                p.wetLevel   = apvts.getRawParameterValue (ParamIDs::fxWet     (i))->load();
-                p.dryLevel   = 1.0f - p.wetLevel;
-                p.width      = apvts.getRawParameterValue (ParamIDs::fxWidth   (i))->load();
-                p.freezeMode = 0.0f;
-                dsp.reverb.setParameters (p);
-                dsp.reverb.process (ctx);
-                break;
-            }
-
-            default: break;
-        }
-    }
 }
 
 //==============================================================================
@@ -762,6 +616,7 @@ void ViolentAudioProcessor::setEQBand (int i, float gainDB)
 void ViolentAudioProcessor::updateEQ()
 {
     if (!prepared) return;
+    eqEnabled = apvts.getRawParameterValue (ParamIDs::EQ_ENABLED)->load() > 0.5f;
     for (int i = 0; i < NUM_EQ_BANDS; ++i)
         setEQBand (i, apvts.getRawParameterValue (ParamIDs::eqBand (i))->load());
 }
@@ -777,22 +632,23 @@ void ViolentAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto xml = apvts.copyState().createXml();
     if (xml == nullptr) return;
 
-    // Persist sample file paths as child elements
-    for (int i = 0; i < MAX_SAMPLES; ++i)
-    {
-        juce::SpinLock::ScopedTryLockType tryLock (sampleModules[i].lock);
-        if (tryLock.isLocked() && sampleModules[i].hasData)
-        {
-            auto* node = xml->createNewChildElement ("SamplePath");
-            node->setAttribute ("slot", i);
-            node->setAttribute ("path", sampleModules[i].filePath);
-        }
-    }
+    xml->setAttribute ("numActiveStreams", numActiveStreams);
 
-    xml->setAttribute ("numActiveSynths", numActiveSynths);
-    xml->setAttribute ("numActiveFx",     numActiveFx);
-    for (int i = 0; i < MAX_FX; ++i)
-        xml->setAttribute ("fxType_" + juce::String (i), static_cast<int> (fxChain[(size_t) i]));
+    for (int s = 0; s < MAX_STREAMS; ++s)
+    {
+        const auto& st = streams[(size_t) s];
+        xml->setAttribute ("st_" + juce::String(s) + "_numFilters", st.numFilters);
+        xml->setAttribute ("st_" + juce::String(s) + "_numFx",      st.numFx);
+        for (int x = 0; x < MAX_STREAM_FX; ++x)
+            xml->setAttribute ("st_" + juce::String(s) + "_fx" + juce::String(x) + "_fxtype",
+                               static_cast<int> (st.fxTypes[(size_t) x]));
+
+        // Sample path for sample-mode streams
+        juce::SpinLock::ScopedTryLockType tryLock (sampleModules[(size_t) s].lock);
+        if (tryLock.isLocked() && sampleModules[(size_t) s].hasData)
+            xml->setAttribute ("st_" + juce::String(s) + "_samplepath",
+                               sampleModules[(size_t) s].filePath);
+    }
 
     copyXmlToBinary (*xml, destData);
 }
@@ -805,23 +661,46 @@ void ViolentAudioProcessor::setStateInformation (const void* data, int sizeInByt
     if (xml->hasTagName (apvts.state.getType()))
         apvts.replaceState (juce::ValueTree::fromXml (*xml));
 
-    numActiveSynths = juce::jlimit (1, MAX_SYNTHS, xml->getIntAttribute ("numActiveSynths", 1));
-    numActiveFx     = juce::jlimit (0, MAX_FX,     xml->getIntAttribute ("numActiveFx", 0));
-    for (int i = 0; i < MAX_FX; ++i)
-        fxChain[(size_t) i] = static_cast<FxType> (
-            juce::jlimit (0, NUM_FX_TYPES - 1,
-                          xml->getIntAttribute ("fxType_" + juce::String (i), 0)));
+    numActiveStreams = juce::jlimit (1, MAX_STREAMS,
+                                     xml->getIntAttribute ("numActiveStreams", 1));
 
-    // Reload samples from stored paths
-    for (auto* node : xml->getChildIterator())
+    for (int s = 0; s < MAX_STREAMS; ++s)
     {
-        if (node->hasTagName ("SamplePath"))
+        auto& st    = streams[(size_t) s];
+        st.numFilters = juce::jlimit (0, MAX_STREAM_FILTERS,
+                                      xml->getIntAttribute ("st_" + juce::String(s) + "_numFilters", 0));
+        st.numFx      = juce::jlimit (0, MAX_STREAM_FX,
+                                      xml->getIntAttribute ("st_" + juce::String(s) + "_numFx", 0));
+        for (int x = 0; x < MAX_STREAM_FX; ++x)
+            st.fxTypes[(size_t) x] = static_cast<FxType> (
+                juce::jlimit (0, NUM_FX_TYPES - 1,
+                              xml->getIntAttribute ("st_" + juce::String(s) + "_fx" + juce::String(x) + "_fxtype", 0)));
+
+        const juce::String path = xml->getStringAttribute ("st_" + juce::String(s) + "_samplepath");
+        if (path.isNotEmpty())
         {
-            const int    slot = node->getIntAttribute ("slot");
-            const juce::File file (node->getStringAttribute ("path"));
-            if (file.existsAsFile())
-                loadSample (slot, file);
+            const juce::File f (path);
+            if (f.existsAsFile()) loadSample (s, f);
         }
+    }
+}
+
+void ViolentAudioProcessor::loadSample (int slotIndex, const juce::File& file)
+{
+    auto reader = std::unique_ptr<juce::AudioFormatReader> (
+        formatManager.createReaderFor (file));
+    if (reader == nullptr) return;
+
+    juce::AudioBuffer<float> tmp (static_cast<int> (reader->numChannels),
+                                   static_cast<int> (reader->lengthInSamples));
+    reader->read (&tmp, 0, static_cast<int> (reader->lengthInSamples), 0, true, true);
+
+    {
+        juce::SpinLock::ScopedLockType lock (sampleModules[(size_t) slotIndex].lock);
+        auto& sm    = sampleModules[(size_t) slotIndex];
+        sm.buffer   = std::move (tmp);
+        sm.filePath = file.getFullPathName();
+        sm.hasData  = true;
     }
 }
 
