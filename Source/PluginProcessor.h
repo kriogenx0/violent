@@ -119,6 +119,10 @@ private:
     static const juce::StringArray& eqParamIDs();
     void setEQBand (int i, float gainDB);
 
+    using StereoFilter = juce::dsp::ProcessorDuplicator<
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Coefficients<float>>;
+
     // -----------------------------------------------------------------------
     // DSP state — one copy per stream
     // -----------------------------------------------------------------------
@@ -136,6 +140,29 @@ private:
         bool  en = false;
         int   type = 0;
         float cutoff = 8000.0f, res = 0.707f;
+    };
+
+    // Per-FX-slot DSP objects (one instance per active FX slot in a stream)
+    struct FxSlotDSP
+    {
+        juce::dsp::Compressor<float>  compressor;
+        juce::dsp::Gain<float>        makeup;
+        juce::dsp::NoiseGate<float>   gate;
+        juce::dsp::Reverb             reverb;
+        StereoFilter                  distToneFilter;
+        bool prepared = false;
+
+        void prepare (const juce::dsp::ProcessSpec& spec)
+        {
+            compressor.prepare (spec);
+            makeup.prepare (spec);
+            gate.prepare (spec);
+            reverb.prepare (spec);
+            distToneFilter.prepare (spec);
+            *distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
+                spec.sampleRate, 4000.0);
+            prepared = true;
+        }
     };
 
     struct StreamDSP
@@ -211,10 +238,6 @@ private:
         1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f
     };
     static constexpr float EQ_Q = 1.41421356f;
-
-    using StereoFilter = juce::dsp::ProcessorDuplicator<
-        juce::dsp::IIR::Filter<float>,
-        juce::dsp::IIR::Coefficients<float>>;
 
     std::array<StereoFilter, NUM_EQ_BANDS> eqBands;
     bool eqEnabled = false;

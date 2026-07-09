@@ -545,7 +545,6 @@ void StreamCard::resized()
 
     // ADSR row (boxed)
     auto adsr = a.removeFromTop (58);
-    g.setColour (ViolentColours::surface); // painted in paint(), just layout here
     const int aw = adsr.getWidth() / 4;
     attKnob.setBounds (adsr.removeFromLeft (aw).reduced (2, 1));
     decKnob.setBounds (adsr.removeFromLeft (aw).reduced (2, 1));
