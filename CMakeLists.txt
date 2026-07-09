@@ -43,6 +43,7 @@ target_sources(Violent
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
+        Source/StandaloneApp.cpp
         Source/SynthEngine.h
         Source/FxChain.h
         Source/StreamChain.h
@@ -53,6 +54,7 @@ target_compile_definitions(Violent
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
 )
 
 target_link_libraries(Violent

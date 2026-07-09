@@ -22,6 +22,27 @@ inline const char* fxTypeName (FxType t)
 }
 
 //==============================================================================
+// Per-slot DSP state for a single FX unit within a stream's FX chain.
+struct FxSlotDSP
+{
+    juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,
+                                    juce::dsp::IIR::Coefficients<float>> distToneFilter;
+    juce::dsp::Compressor<float> compressor;
+    juce::dsp::Gain<float>       makeup;
+    juce::dsp::NoiseGate<float>  gate;
+    juce::dsp::Reverb            reverb;
+
+    void prepare (const juce::dsp::ProcessSpec& spec)
+    {
+        distToneFilter.prepare (spec);
+        compressor.prepare (spec);
+        makeup.prepare (spec);
+        gate.prepare (spec);
+        reverb.prepare (spec);
+    }
+};
+
+//==============================================================================
 namespace ParamIDs
 {
     inline juce::String fxDrive    (int n) { return "fx_" + juce::String (n) + "_drive"; }

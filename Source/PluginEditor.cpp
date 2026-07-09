@@ -669,7 +669,7 @@ void StreamPanel::resized()
 // ViolentAudioProcessorEditor
 //==============================================================================
 ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor (p), streamPanel (p)
+    : AudioProcessorEditor (p), processor (p), streamPanel (p)
 {
     setLookAndFeel (&laf);
     setResizable (false, true);
