@@ -85,7 +85,7 @@ private:
     ViolentAudioProcessor& processor;
     int stream, slot;
 
-    juce::TextButton removeBtn { "×" };
+    juce::TextButton removeBtn { "X" };
     juce::Label      titleLabel;
 
     LabelledKnob driveKnob  { "Drive",  ViolentColours::red    };
@@ -136,7 +136,7 @@ private:
     ViolentAudioProcessor& processor;
     int stream, slot;
 
-    juce::TextButton removeBtn { "×" };
+    juce::TextButton removeBtn { "X" };
     juce::Label      nameLabel;
     juce::ComboBox   typeBox;
     LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
@@ -176,7 +176,7 @@ private:
     int stream;
 
     // Header
-    juce::TextButton removeBtn    { "×" };
+    juce::TextButton removeBtn    { "X" };
     juce::Label      nameLabel;
     juce::ToggleButton enableBtn;
 
