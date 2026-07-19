@@ -22,7 +22,7 @@ inline const char* fxTypeName (FxType t)
 }
 
 //==============================================================================
-// Per-slot DSP state for a single FX unit within a stream's FX chain.
+// Per-slot DSP state for a single FX unit within a generator's FX chain.
 struct FxSlotDSP
 {
     juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>,

@@ -128,6 +128,18 @@ struct SVFilter
         const float hi  = x - low[ch] - q_coeff * band[ch];
         band[ch]        = f_coeff * hi + band[ch];
 
+        // The recursive state above never self-corrects once it picks up a
+        // non-finite or runaway value (e.g. from a transient upstream spike
+        // or marginal coefficients) — without this it would either silence
+        // the filter permanently or blow up without recovering.
+        constexpr float stateLimit = 1000.0f;
+        if (! std::isfinite (low[ch]) || ! std::isfinite (band[ch])
+            || std::abs (low[ch]) > stateLimit || std::abs (band[ch]) > stateLimit)
+        {
+            low[ch]  = 0.0f;
+            band[ch] = 0.0f;
+        }
+
         switch (type)
         {
             case 0:  return low[ch];
