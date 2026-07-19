@@ -47,7 +47,7 @@ target_sources(Violent
         Source/StandaloneApp.cpp
         Source/SynthEngine.h
         Source/FxChain.h
-        Source/StreamChain.h
+        Source/GeneratorChain.h
 )
 
 target_compile_definitions(Violent
@@ -65,5 +65,43 @@ target_link_libraries(Violent
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
+
+# ==================================================================================================
+# Unit tests — a small console app, linked against the plugin's already-compiled shared code
+# (the "Violent" target), so processor/DSP logic can be exercised without a host or a display.
+# Run with: ./build/ViolentTests_artefacts/Debug/ViolentTests
+juce_add_console_app(ViolentTests
+    PRODUCT_NAME "ViolentTests"
+)
+
+target_sources(ViolentTests
+    PRIVATE
+        Tests/TestMain.cpp
+        Tests/PresetTests.cpp
+        Tests/MidiModifierTests.cpp
+)
+
+target_include_directories(ViolentTests
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source"
+        "$<TARGET_PROPERTY:Violent,JUCE_GENERATED_SOURCES_DIRECTORY>"
+)
+
+target_compile_definitions(ViolentTests
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_UNIT_TESTS=1
+)
+
+target_link_libraries(ViolentTests
+    PRIVATE
+        Violent
+        juce::juce_audio_utils
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
