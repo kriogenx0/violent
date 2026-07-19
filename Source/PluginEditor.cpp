@@ -27,7 +27,7 @@ ViolentLookAndFeel::ViolentLookAndFeel()
 void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     int x, int y, int width, int height,
     float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
-    juce::Slider& slider)
+    juce::Slider&)
 {
     const float radius  = static_cast<float> (juce::jmin (width, height)) * 0.5f - 4.0f;
     const float centreX = static_cast<float> (x) + static_cast<float> (width)  * 0.5f;
@@ -45,8 +45,9 @@ void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     g.strokePath (trackArc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
 
-    juce::Colour arc = slider.findColour (juce::Slider::rotarySliderFillColourId, false);
-    if (!arc.isOpaque()) arc = ViolentColours::accent;
+    // Knobs read hot (accent orange) the further they're turned up, and cool
+    // (muted grey) near the bottom of their range, regardless of parameter.
+    const juce::Colour arc = ViolentColours::subtext.interpolatedWith (ViolentColours::accent, sliderPos);
 
     juce::Path valArc;
     valArc.addCentredArc (centreX, centreY, radius - 3.0f, radius - 3.0f,
@@ -54,12 +55,6 @@ void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     g.setColour (arc);
     g.strokePath (valArc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                  juce::PathStrokeType::rounded));
-
-    const float thumbR = 4.0f;
-    const float thumbX = centreX + (radius - 8.0f) * std::cos (angle - juce::MathConstants<float>::halfPi);
-    const float thumbY = centreY + (radius - 8.0f) * std::sin (angle - juce::MathConstants<float>::halfPi);
-    g.setColour (ViolentColours::text);
-    g.fillEllipse (thumbX - thumbR, thumbY - thumbR, thumbR * 2.0f, thumbR * 2.0f);
 }
 
 void ViolentLookAndFeel::drawLinearSlider (juce::Graphics& g,
@@ -90,13 +85,25 @@ void ViolentLookAndFeel::drawLinearSlider (juce::Graphics& g,
     g.fillRoundedRectangle (centreX - 11.0f, sliderPos - 6.0f, 22.0f, 12.0f, 3.0f);
 }
 
+void ViolentLookAndFeel::paintControlShape (juce::Graphics& g, juce::Rectangle<float> b,
+                                             bool isOn, bool isHovered)
+{
+    g.setColour (isOn ? ViolentColours::accent
+                       : (isHovered ? ViolentColours::overlay : ViolentColours::surface));
+    g.fillRoundedRectangle (b, ViolentColours::cornerRadius);
+
+    juce::Colour border = isOn ? ViolentColours::accent.brighter (0.2f) : ViolentColours::overlay;
+    if (isHovered) border = border.brighter (0.35f);
+    g.setColour (border);
+    g.drawRoundedRectangle (b, ViolentColours::cornerRadius, 1.0f);
+}
+
 void ViolentLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& btn,
-                                            bool, bool)
+                                            bool highlighted, bool)
 {
     const bool on = btn.getToggleState();
     const auto b  = btn.getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (on ? ViolentColours::accent : ViolentColours::overlay);
-    g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+    paintControlShape (g, b, on, highlighted);
     g.setColour (on ? ViolentColours::background : ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     g.drawFittedText (btn.getButtonText(), btn.getLocalBounds(), juce::Justification::centred, 1);
@@ -106,14 +113,38 @@ void ViolentLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
                                                 const juce::Colour&, bool highlighted, bool)
 {
     const auto b  = btn.getLocalBounds().toFloat().reduced (1.0f);
-    const bool on = btn.getToggleState();
-    g.setColour (on ? ViolentColours::accent : (highlighted ? ViolentColours::overlay : ViolentColours::surface));
-    g.fillRoundedRectangle (b, 6.0f);
-    g.setColour (on ? ViolentColours::accent.brighter (0.2f) : ViolentColours::overlay);
-    g.drawRoundedRectangle (b, 6.0f, 1.0f);
+    paintControlShape (g, b, btn.getToggleState(), highlighted);
+}
+
+void ViolentLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+                                        int, int, int, int, juce::ComboBox& box)
+{
+    const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (1.0f);
+    paintControlShape (g, b, box.isPopupActive(), box.isMouseOver());
+
+    const float arrowCX = (float) width - 15.0f, arrowCY = (float) height * 0.5f;
+    juce::Path arrow;
+    arrow.addTriangle (arrowCX - 4.0f, arrowCY - 2.5f, arrowCX + 4.0f, arrowCY - 2.5f, arrowCX, arrowCY + 3.0f);
+    g.setColour (ViolentColours::subtext);
+    g.fillPath (arrow);
 }
 
 juce::Font ViolentLookAndFeel::getLabelFont (juce::Label&)
+{
+    return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f));
+}
+
+juce::Font ViolentLookAndFeel::getTextButtonFont (juce::TextButton&, int buttonHeight)
+{
+    return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (juce::jmin (12.0f, (float) buttonHeight * 0.6f)).withStyle ("Bold"));
+}
+
+juce::Font ViolentLookAndFeel::getComboBoxFont (juce::ComboBox&)
+{
+    return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f));
+}
+
+juce::Font ViolentLookAndFeel::getPopupMenuFont()
 {
     return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f));
 }
@@ -176,10 +207,10 @@ void LevelMeter::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-// StreamFxCard
+// GeneratorFxCard
 //==============================================================================
-StreamFxCard::StreamFxCard (ViolentAudioProcessor& p, int streamIdx, int fxSlot)
-    : processor (p), stream (streamIdx), slot (fxSlot)
+GeneratorFxCard::GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, int fxSlot)
+    : processor (p), generator (generatorIdx), slot (fxSlot)
 {
     titleLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     titleLabel.setColour (juce::Label::textColourId, ViolentColours::text);
@@ -191,6 +222,7 @@ StreamFxCard::StreamFxCard (ViolentAudioProcessor& p, int streamIdx, int fxSlot)
 
     for (const auto& t : { "Soft Clip", "Hard Clip", "Fuzz" })
         distTypeBox.addItem (t, distTypeBox.getNumItems() + 1);
+    distTypeBox.setRepaintsOnMouseActivity (true);
     addChildComponent (distTypeBox);
 
     for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
@@ -198,26 +230,26 @@ StreamFxCard::StreamFxCard (ViolentAudioProcessor& p, int streamIdx, int fxSlot)
                      &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
         addChildComponent (*k);
 
-    driveAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::stFxDrive    (stream, slot), driveKnob.slider);
-    toneAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::stFxTone     (stream, slot), toneKnob.slider);
-    levelAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::stFxLevel    (stream, slot), levelKnob.slider);
-    distTypeAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::stFxDistType (stream, slot), distTypeBox);
-    threshAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::stFxThresh   (stream, slot), threshKnob.slider);
-    ratioAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::stFxRatio    (stream, slot), ratioKnob.slider);
-    attackKnobAtt= std::make_unique<SA> (processor.apvts, ParamIDs::stFxAttack   (stream, slot), attackKnob.slider);
-    releaseAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::stFxRelease  (stream, slot), releaseKnob.slider);
-    makeupAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::stFxMakeup   (stream, slot), makeupKnob.slider);
-    roomAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::stFxRoom     (stream, slot), roomKnob.slider);
-    dampingAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::stFxDamping  (stream, slot), dampingKnob.slider);
-    wetAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::stFxWet      (stream, slot), wetKnob.slider);
-    widthAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::stFxWidth    (stream, slot), widthKnob.slider);
+    driveAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxDrive    (generator, slot), driveKnob.slider);
+    toneAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genFxTone     (generator, slot), toneKnob.slider);
+    levelAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxLevel    (generator, slot), levelKnob.slider);
+    distTypeAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genFxDistType (generator, slot), distTypeBox);
+    threshAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFxThresh   (generator, slot), threshKnob.slider);
+    ratioAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRatio    (generator, slot), ratioKnob.slider);
+    attackKnobAtt= std::make_unique<SA> (processor.apvts, ParamIDs::genFxAttack   (generator, slot), attackKnob.slider);
+    releaseAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRelease  (generator, slot), releaseKnob.slider);
+    makeupAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFxMakeup   (generator, slot), makeupKnob.slider);
+    roomAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRoom     (generator, slot), roomKnob.slider);
+    dampingAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genFxDamping  (generator, slot), dampingKnob.slider);
+    wetAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genFxWet      (generator, slot), wetKnob.slider);
+    widthAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxWidth    (generator, slot), widthKnob.slider);
 
-    showForType (processor.streams[(size_t) stream].fxTypes[(size_t) slot]);
+    showForType (processor.generators[(size_t) generator].fxTypes[(size_t) slot]);
 }
 
-StreamFxCard::~StreamFxCard() {}
+GeneratorFxCard::~GeneratorFxCard() {}
 
-void StreamFxCard::setAllInvisible()
+void GeneratorFxCard::setAllInvisible()
 {
     for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
                      &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob,
@@ -226,7 +258,7 @@ void StreamFxCard::setAllInvisible()
     distTypeBox.setVisible (false);
 }
 
-void StreamFxCard::showForType (FxType t)
+void GeneratorFxCard::showForType (FxType t)
 {
     setAllInvisible();
     titleLabel.setText (fxTypeName (t), juce::dontSendNotification);
@@ -249,13 +281,13 @@ void StreamFxCard::showForType (FxType t)
     }
 }
 
-void StreamFxCard::layoutKnobs (std::initializer_list<LabelledKnob*> ks, juce::Rectangle<int> a)
+void GeneratorFxCard::layoutKnobs (std::initializer_list<LabelledKnob*> ks, juce::Rectangle<int> a)
 {
     const int w = a.getWidth() / (int) ks.size();
     for (auto* k : ks) k->setBounds (a.removeFromLeft (w).reduced (3, 2));
 }
 
-void StreamFxCard::paint (juce::Graphics& g)
+void GeneratorFxCard::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
     g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
@@ -263,7 +295,7 @@ void StreamFxCard::paint (juce::Graphics& g)
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f, 1.0f);
 }
 
-void StreamFxCard::resized()
+void GeneratorFxCard::resized()
 {
     auto a = getLocalBounds().reduced (4, 3);
     auto hdr = a.removeFromTop (22);
@@ -271,7 +303,7 @@ void StreamFxCard::resized()
     titleLabel.setBounds (hdr);
     a.removeFromTop (2);
 
-    const FxType t = processor.streams[(size_t) stream].fxTypes[(size_t) slot];
+    const FxType t = processor.generators[(size_t) generator].fxTypes[(size_t) slot];
     switch (t)
     {
         case FxType::Distortion:
@@ -288,10 +320,74 @@ void StreamFxCard::resized()
 }
 
 //==============================================================================
-// StreamFilterRow
+// GeneratorMidiRow
 //==============================================================================
-StreamFilterRow::StreamFilterRow (ViolentAudioProcessor& p, int streamIdx, int filterSlot)
-    : processor (p), stream (streamIdx), slot (filterSlot)
+GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
+    : processor (p), generator (generatorIdx)
+{
+    sectionLabel.setText ("MIDI", juce::dontSendNotification);
+    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f).withStyle ("Bold")));
+    addAndMakeVisible (sectionLabel);
+
+    for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addAndMakeVisible (*k);
+
+    keyBtn.setClickingTogglesState (true);
+    addAndMakeVisible (keyBtn);
+    arpBtn.setClickingTogglesState (true);
+    addAndMakeVisible (arpBtn);
+
+    for (const auto& t : { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" })
+        keyRootBox.addItem (t, keyRootBox.getNumItems() + 1);
+    keyRootBox.setRepaintsOnMouseActivity (true);
+    addAndMakeVisible (keyRootBox);
+
+    for (const auto& t : { "Major", "Minor" })
+        keyScaleBox.addItem (t, keyScaleBox.getNumItems() + 1);
+    keyScaleBox.setRepaintsOnMouseActivity (true);
+    addAndMakeVisible (keyScaleBox);
+
+    transposeAtt = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiTranspose (generator), transposeKnob.slider);
+    octaveAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiOctave    (generator), octaveKnob.slider);
+    arpRateAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiArpRate   (generator), arpRateKnob.slider);
+    keyRootAtt   = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyRoot   (generator), keyRootBox);
+    keyScaleAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyScale  (generator), keyScaleBox);
+    keyEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiKeyEnabled (generator), keyBtn);
+    arpEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiArpEnabled (generator), arpBtn);
+}
+
+void GeneratorMidiRow::paint (juce::Graphics& g)
+{
+    g.setColour (ViolentColours::surface);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
+}
+
+void GeneratorMidiRow::resized()
+{
+    auto a = getLocalBounds().reduced (6, 3);
+    sectionLabel.setBounds (a.removeFromLeft (34));
+
+    transposeKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
+    octaveKnob   .setBounds (a.removeFromLeft (72).reduced (2, 1));
+
+    a.removeFromLeft (6);
+    keyBtn     .setBounds (a.removeFromLeft (44).reduced (2, 14));
+    keyRootBox .setBounds (a.removeFromLeft (64).reduced (2, 14));
+    keyScaleBox.setBounds (a.removeFromLeft (74).reduced (2, 14));
+
+    a.removeFromLeft (6);
+    arpBtn      .setBounds (a.removeFromLeft (44).reduced (2, 14));
+    arpRateKnob .setBounds (a.removeFromLeft (72).reduced (2, 1));
+}
+
+//==============================================================================
+// GeneratorFilterRow
+//==============================================================================
+GeneratorFilterRow::GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot)
+    : processor (p), generator (generatorIdx), slot (filterSlot),
+      typeSelector (p.apvts, ParamIDs::genFltType (generatorIdx, filterSlot)),
+      responseView (p.apvts, ParamIDs::genFltType (generatorIdx, filterSlot),
+                    ParamIDs::genFltCut (generatorIdx, filterSlot), ParamIDs::genFltRes (generatorIdx, filterSlot))
 {
     nameLabel.setText ("Filter " + juce::String (slot + 1), juce::dontSendNotification);
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
@@ -301,61 +397,78 @@ StreamFilterRow::StreamFilterRow (ViolentAudioProcessor& p, int streamIdx, int f
     addAndMakeVisible (removeBtn);
     removeBtn.onClick = [this] { if (onRemove) onRemove(); };
 
-    for (const auto& t : { "LP", "HP", "BP", "Notch" })
-        typeBox.addItem (t, typeBox.getNumItems() + 1);
-    addAndMakeVisible (typeBox);
+    addAndMakeVisible (typeSelector);
 
     for (auto* k : { &cutoffKnob, &resKnob }) addAndMakeVisible (*k);
+    addAndMakeVisible (responseView);
 
-    typeAtt   = std::make_unique<CA> (processor.apvts, ParamIDs::stFltType (stream, slot), typeBox);
-    cutoffAtt = std::make_unique<SA> (processor.apvts, ParamIDs::stFltCut  (stream, slot), cutoffKnob.slider);
-    resAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::stFltRes  (stream, slot), resKnob.slider);
+    cutoffAtt = std::make_unique<SA> (processor.apvts, ParamIDs::genFltCut  (generator, slot), cutoffKnob.slider);
+    resAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFltRes  (generator, slot), resKnob.slider);
 }
 
-StreamFilterRow::~StreamFilterRow() {}
+GeneratorFilterRow::~GeneratorFilterRow() {}
 
-void StreamFilterRow::paint (juce::Graphics& g)
+void GeneratorFilterRow::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
     g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
 }
 
-void StreamFilterRow::resized()
+void GeneratorFilterRow::resized()
 {
     auto a = getLocalBounds().reduced (4, 3);
-    removeBtn .setBounds (a.removeFromLeft  (24));
-    nameLabel .setBounds (a.removeFromLeft  (60));
-    typeBox   .setBounds (a.removeFromLeft  (70).reduced (2, 4));
-    const int kw = a.getWidth() / 2;
-    cutoffKnob.setBounds (a.removeFromLeft (kw).reduced (3, 2));
-    resKnob   .setBounds (a.reduced (3, 2));
+    auto top = a.removeFromTop (40);
+    removeBtn   .setBounds (top.removeFromLeft  (24));
+    nameLabel   .setBounds (top.removeFromLeft  (60));
+    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
+    const int kw = top.getWidth() / 2;
+    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
+    resKnob   .setBounds (top.reduced (3, 2));
+
+    a.removeFromTop (2);
+    responseView.setBounds (a);
 }
 
 //==============================================================================
-// StreamCard
+// GeneratorCard
 //==============================================================================
-StreamCard::StreamCard (ViolentAudioProcessor& p, int streamIdx)
-    : processor (p), stream (streamIdx)
+GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
+    : processor (p), generator (generatorIdx), waveformView (p, generatorIdx), midiRow (p, generatorIdx)
 {
-    nameLabel.setText ("Stream " + juce::String (stream + 1), juce::dontSendNotification);
     nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
+    addAndMakeVisible (waveformView);
+    addAndMakeVisible (midiRow);
 
-    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
     addAndMakeVisible (removeBtn);
     removeBtn.onClick = [this] { if (onRemove) onRemove(); };
 
     enableBtn.setButtonText ("ON");
     enableBtn.setClickingTogglesState (true);
     addAndMakeVisible (enableBtn);
-    enableAtt = std::make_unique<BA> (processor.apvts, ParamIDs::streamEn (stream), enableBtn);
+    enableAtt = std::make_unique<BA> (processor.apvts, ParamIDs::generatorEn (generator), enableBtn);
 
     // Source type
     for (const auto& t : { "Sine", "Saw", "Square", "Triangle", "Noise", "Sample" })
         srcTypeBox.addItem (t, srcTypeBox.getNumItems() + 1);
+    srcTypeBox.setRepaintsOnMouseActivity (true);
     addAndMakeVisible (srcTypeBox);
-    srcTypeAtt = std::make_unique<CA> (processor.apvts, ParamIDs::stSrcType (stream), srcTypeBox);
+    srcTypeAtt = std::make_unique<CA> (processor.apvts, ParamIDs::genSrcType (generator), srcTypeBox);
+
+    addAndMakeVisible (synthModeBtn);
+    addAndMakeVisible (samplerModeBtn);
+    synthModeBtn.onClick = [this]
+    {
+        if (srcTypeBox.getSelectedItemIndex() == (int) SourceType::Sample)
+            srcTypeBox.setSelectedItemIndex (lastWaveformIndex);
+    };
+    samplerModeBtn.onClick = [this]
+    {
+        if (srcTypeBox.getSelectedItemIndex() != (int) SourceType::Sample)
+            lastWaveformIndex = srcTypeBox.getSelectedItemIndex();
+        srcTypeBox.setSelectedItemIndex ((int) SourceType::Sample);
+    };
 
     loadSampleBtn.onClick = [this] { openFilePicker(); };
     addChildComponent (loadSampleBtn);
@@ -366,77 +479,49 @@ StreamCard::StreamCard (ViolentAudioProcessor& p, int streamIdx)
     for (auto* k : { &gainKnob, &octKnob, &semiKnob, &detKnob, &phaseKnob,
                      &pwKnob, &panKnob, &velKnob, &uniKnob, &uniSpreadKnob,
                      &attKnob, &decKnob, &susKnob, &relKnob,
-                     &levelKnob, &streamPan })
+                     &levelKnob, &generatorPan })
         addAndMakeVisible (*k);
 
-    gainAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcGain      (stream), gainKnob.slider);
-    octAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcOct       (stream), octKnob.slider);
-    semiAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcSemi      (stream), semiKnob.slider);
-    detAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcDet       (stream), detKnob.slider);
-    phaseAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcPhase     (stream), phaseKnob.slider);
-    pwAtt         = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcPW        (stream), pwKnob.slider);
-    panSrcAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcPan       (stream), panKnob.slider);
-    velAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcVel       (stream), velKnob.slider);
-    uniAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcUni       (stream), uniKnob.slider);
-    uniSpreadAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcUniSpread (stream), uniSpreadKnob.slider);
-    attAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcAtt       (stream), attKnob.slider);
-    decAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcDec       (stream), decKnob.slider);
-    susAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcSus       (stream), susKnob.slider);
-    relAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::stSrcRel       (stream), relKnob.slider);
-    levelAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::streamLevel    (stream), levelKnob.slider);
-    streamPanAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::streamPan      (stream), streamPan.slider);
+    gainAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcGain      (generator), gainKnob.slider);
+    octAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcOct       (generator), octKnob.slider);
+    semiAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcSemi      (generator), semiKnob.slider);
+    detAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcDet       (generator), detKnob.slider);
+    phaseAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPhase     (generator), phaseKnob.slider);
+    pwAtt         = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPW        (generator), pwKnob.slider);
+    panSrcAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPan       (generator), panKnob.slider);
+    velAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcVel       (generator), velKnob.slider);
+    uniAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcUni       (generator), uniKnob.slider);
+    uniSpreadAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcUniSpread (generator), uniSpreadKnob.slider);
+    attAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcAtt       (generator), attKnob.slider);
+    decAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcDec       (generator), decKnob.slider);
+    susAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcSus       (generator), susKnob.slider);
+    relAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcRel       (generator), relKnob.slider);
+    levelAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::generatorLevel    (generator), levelKnob.slider);
+    generatorPanAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::generatorPan      (generator), generatorPan.slider);
 
     // Filter chain
-    const auto& st = processor.streams[(size_t) stream];
-    for (int f = 0; f < st.numFilters; ++f)
-    {
-        filterRows[(size_t) f] = std::make_unique<StreamFilterRow> (processor, stream, f);
-        addAndMakeVisible (*filterRows[(size_t) f]);
-        filterRows[(size_t) f]->onRemove = [this, f]
-        {
-            auto& s = processor.streams[(size_t) stream];
-            for (int j = f; j < s.numFilters - 1; ++j)
-                filterRows[(size_t) j] = std::make_unique<StreamFilterRow> (processor, stream, j + 1);
-            filterRows[(size_t) (--s.numFilters)] = nullptr;
-            if (onLayoutChanged) onLayoutChanged();
-        };
-    }
+    const auto& gen = processor.generators[(size_t) generator];
+    for (int f = 0; f < gen.numFilters; ++f)
+        addFilterRow (f, f);
 
-    for (int x = 0; x < st.numFx; ++x)
-    {
-        fxCards[(size_t) x] = std::make_unique<StreamFxCard> (processor, stream, x);
-        addAndMakeVisible (*fxCards[(size_t) x]);
-        fxCards[(size_t) x]->onRemove = [this, x]
-        {
-            auto& s = processor.streams[(size_t) stream];
-            for (int j = x; j < s.numFx - 1; ++j)
-            {
-                s.fxTypes[(size_t) j] = s.fxTypes[(size_t) (j + 1)];
-                fxCards[(size_t) j] = std::make_unique<StreamFxCard> (processor, stream, j);
-                addAndMakeVisible (*fxCards[(size_t) j]);
-            }
-            s.fxTypes[(size_t) (--s.numFx)] = FxType::None;
-            fxCards[(size_t) s.numFx] = nullptr;
-            if (onLayoutChanged) onLayoutChanged();
-        };
-    }
+    for (int x = 0; x < gen.numFx; ++x)
+        addFxCard (x, gen.fxTypes[(size_t) x]);
 
     addAndMakeVisible (addFilterBtn);
     addFilterBtn.onClick = [this]
     {
-        auto& s = processor.streams[(size_t) stream];
-        if (s.numFilters >= MAX_STREAM_FILTERS) return;
+        auto& s = processor.generators[(size_t) generator];
+        if (s.numFilters >= MAX_GENERATOR_FILTERS) return;
         const int f = s.numFilters++;
-        filterRows[(size_t) f] = std::make_unique<StreamFilterRow> (processor, stream, f);
-        addAndMakeVisible (*filterRows[(size_t) f]);
+        addFilterRow (f, f);
         if (onLayoutChanged) onLayoutChanged();
     };
 
     addAndMakeVisible (addFxBtn);
     addFxBtn.onClick = [this]
     {
-        auto& s = processor.streams[(size_t) stream];
-        if (s.numFx >= MAX_STREAM_FX) return;
+        auto& s = processor.generators[(size_t) generator];
+        if (s.numFx >= MAX_GENERATOR_FX) return;
 
         juce::PopupMenu menu;
         menu.addItem (1, "Distortion");
@@ -450,12 +535,10 @@ StreamCard::StreamCard (ViolentAudioProcessor& p, int streamIdx)
                 if (result == 0) return;
                 const FxType types[] = { FxType::Distortion, FxType::Compressor,
                                          FxType::Gate, FxType::Reverb };
-                auto& s  = processor.streams[(size_t) stream];
+                auto& s  = processor.generators[(size_t) generator];
                 const int x = s.numFx++;
                 s.fxTypes[(size_t) x] = types[result - 1];
-                fxCards[(size_t) x] = std::make_unique<StreamFxCard> (processor, stream, x);
-                addAndMakeVisible (*fxCards[(size_t) x]);
-                fxCards[(size_t) x]->showForType (types[result - 1]);
+                addFxCard (x, types[result - 1]);
                 if (onLayoutChanged) onLayoutChanged();
             });
     };
@@ -463,15 +546,58 @@ StreamCard::StreamCard (ViolentAudioProcessor& p, int streamIdx)
     srcTypeBox.onChange = [this]
     {
         const bool isSample = (srcTypeBox.getSelectedItemIndex() == (int) SourceType::Sample);
-        loadSampleBtn.setVisible (isSample);
+        if (! isSample) lastWaveformIndex = srcTypeBox.getSelectedItemIndex();
+
+        nameLabel.setText (isSample ? "Sampler" : "Synth", juce::dontSendNotification);
+
+        srcTypeBox.setVisible      (! isSample);
+        loadSampleBtn.setVisible   (isSample);
         sampleFileLabel.setVisible (isSample);
+
+        synthModeBtn.setToggleState   (! isSample, juce::dontSendNotification);
+        samplerModeBtn.setToggleState (  isSample, juce::dontSendNotification);
+
+        resized();
     };
     srcTypeBox.onChange();
 }
 
-StreamCard::~StreamCard() {}
+GeneratorCard::~GeneratorCard() {}
 
-void StreamCard::openFilePicker()
+void GeneratorCard::addFilterRow (int arrayIndex, int paramSlot)
+{
+    filterRows[(size_t) arrayIndex] = std::make_unique<GeneratorFilterRow> (processor, generator, paramSlot);
+    addAndMakeVisible (*filterRows[(size_t) arrayIndex]);
+    filterRows[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
+    {
+        auto& s = processor.generators[(size_t) generator];
+        for (int j = arrayIndex; j < s.numFilters - 1; ++j)
+            addFilterRow (j, j + 1);
+        filterRows[(size_t) (--s.numFilters)] = nullptr;
+        if (onLayoutChanged) onLayoutChanged();
+    };
+}
+
+void GeneratorCard::addFxCard (int arrayIndex, FxType type)
+{
+    fxCards[(size_t) arrayIndex] = std::make_unique<GeneratorFxCard> (processor, generator, arrayIndex);
+    addAndMakeVisible (*fxCards[(size_t) arrayIndex]);
+    fxCards[(size_t) arrayIndex]->showForType (type);
+    fxCards[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
+    {
+        auto& s = processor.generators[(size_t) generator];
+        for (int j = arrayIndex; j < s.numFx - 1; ++j)
+        {
+            s.fxTypes[(size_t) j] = s.fxTypes[(size_t) (j + 1)];
+            addFxCard (j, s.fxTypes[(size_t) j]);
+        }
+        s.fxTypes[(size_t) (--s.numFx)] = FxType::None;
+        fxCards[(size_t) s.numFx] = nullptr;
+        if (onLayoutChanged) onLayoutChanged();
+    };
+}
+
+void GeneratorCard::openFilePicker()
 {
     fileChooser = std::make_unique<juce::FileChooser> ("Load Sample",
         juce::File::getSpecialLocation (juce::File::userMusicDirectory),
@@ -484,48 +610,80 @@ void StreamCard::openFilePicker()
             const auto f = fc.getResult();
             if (f.existsAsFile())
             {
-                processor.loadSample (stream, f);
+                processor.loadSample (generator, f);
                 sampleFileLabel.setText (f.getFileName(), juce::dontSendNotification);
             }
         });
 }
 
-int StreamCard::preferredHeight() const noexcept
+int GeneratorCard::preferredHeight() const noexcept
 {
-    const auto& st = processor.streams[(size_t) stream];
-    return HEADER_H + SOURCE_H
-         + st.numFilters * (StreamFilterRow::ROW_H + 4)
-         + (st.numFilters < MAX_STREAM_FILTERS ? 32 : 0)
-         + st.numFx * (StreamFxCard::CARD_H + 4)
-         + (st.numFx < MAX_STREAM_FX ? 32 : 0)
+    const auto& gen = processor.generators[(size_t) generator];
+    return HEADER_H + GeneratorMidiRow::ROW_H + SOURCE_H
+         + 3 * ARROW_H
+         + gen.numFilters * (GeneratorFilterRow::ROW_H + 4)
+         + (gen.numFilters < MAX_GENERATOR_FILTERS ? 32 : 0)
+         + gen.numFx * (GeneratorFxCard::CARD_H + 4)
+         + (gen.numFx < MAX_GENERATOR_FX ? 32 : 0)
          + FOOTER_H + 8;
 }
 
-void StreamCard::paint (juce::Graphics& g)
+void GeneratorCard::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::overlay);
     g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f);
     g.setColour (ViolentColours::accent.withAlpha (0.6f));
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f, 1.5f);
+
+    g.setColour (ViolentColours::surface);
+    g.fillRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f);
+    g.setColour (ViolentColours::overlay);
+    g.drawRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f, 1.0f);
+
+    drawRoutingArrow (g, midiArrowY);
+    drawRoutingArrow (g, filterArrowY);
+    drawRoutingArrow (g, effectArrowY);
 }
 
-void StreamCard::resized()
+void GeneratorCard::drawRoutingArrow (juce::Graphics& g, int y) const
+{
+    const float cx = (float) getWidth() * 0.5f;
+    const float halfLineLen = 60.0f;
+
+    g.setColour (ViolentColours::accent.withAlpha (0.35f));
+    g.drawLine (cx - halfLineLen, (float) y, cx + halfLineLen, (float) y, 1.0f);
+
+    juce::Path arrow;
+    arrow.addTriangle (cx - 5.0f, (float) y - 4.0f, cx + 5.0f, (float) y - 4.0f, cx, (float) y + 4.0f);
+    g.setColour (ViolentColours::accent);
+    g.fillPath (arrow);
+}
+
+void GeneratorCard::resized()
 {
     auto a = getLocalBounds().reduced (6, 4);
 
     // Header
     auto hdr = a.removeFromTop (HEADER_H);
+    enableBtn.setBounds (hdr.removeFromRight (40).reduced (2, 4));
     removeBtn.setBounds (hdr.removeFromLeft (28));
-    nameLabel.setBounds (hdr.removeFromLeft (90));
-    enableBtn.setBounds (hdr.removeFromLeft (40).reduced (2, 4));
-    srcTypeBox.setBounds (hdr.removeFromLeft (90).reduced (2, 4));
+    nameLabel.setBounds (hdr.removeFromLeft (70));
+    synthModeBtn.setBounds   (hdr.removeFromLeft (55).reduced (2, 4));
+    samplerModeBtn.setBounds (hdr.removeFromLeft (65).reduced (2, 4));
+    if (srcTypeBox.isVisible())
+        srcTypeBox.setBounds (hdr.removeFromLeft (90).reduced (2, 4));
     if (loadSampleBtn.isVisible())
     {
         loadSampleBtn.setBounds (hdr.removeFromLeft (70).reduced (2, 4));
-        sampleFileLabel.setBounds (hdr.reduced (2, 4));
+        sampleFileLabel.setBounds (hdr.removeFromLeft (110).reduced (2, 4));
     }
+    waveformView.setBounds (hdr.reduced (6, 4));
 
     a.removeFromTop (4);
+
+    // MIDI modifier — before the generator
+    midiRow.setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
+    midiArrowY = a.removeFromTop (ARROW_H).getCentreY();
 
     // Source knobs row 1
     auto row1 = a.removeFromTop (58);
@@ -543,91 +701,98 @@ void StreamCard::resized()
 
     a.removeFromTop (4);
 
-    // ADSR row (boxed)
+    // ADSR box — aligned to the same column grid as the source knobs above
     auto adsr = a.removeFromTop (58);
-    const int aw = adsr.getWidth() / 4;
-    attKnob.setBounds (adsr.removeFromLeft (aw).reduced (2, 1));
-    decKnob.setBounds (adsr.removeFromLeft (aw).reduced (2, 1));
-    susKnob.setBounds (adsr.removeFromLeft (aw).reduced (2, 1));
-    relKnob.setBounds (adsr.reduced (2, 1));
+    adsrBoxBounds = adsr;
+    attKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
+    decKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
+    susKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
+    relKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
 
-    a.removeFromTop (6);
+    filterArrowY = a.removeFromTop (ARROW_H).getCentreY();
 
     // Filters
-    const auto& st = processor.streams[(size_t) stream];
-    for (int f = 0; f < MAX_STREAM_FILTERS; ++f)
+    const auto& gen = processor.generators[(size_t) generator];
+    for (int f = 0; f < MAX_GENERATOR_FILTERS; ++f)
     {
         if (filterRows[(size_t) f])
         {
-            filterRows[(size_t) f]->setBounds (a.removeFromTop (StreamFilterRow::ROW_H));
+            filterRows[(size_t) f]->setBounds (a.removeFromTop (GeneratorFilterRow::ROW_H));
             a.removeFromTop (4);
         }
     }
-    if (st.numFilters < MAX_STREAM_FILTERS)
+    if (gen.numFilters < MAX_GENERATOR_FILTERS)
     {
         addFilterBtn.setBounds (a.removeFromTop (28).reduced (4, 2));
         a.removeFromTop (4);
     }
-    addFilterBtn.setVisible (st.numFilters < MAX_STREAM_FILTERS);
+    addFilterBtn.setVisible (gen.numFilters < MAX_GENERATOR_FILTERS);
+
+    effectArrowY = a.removeFromTop (ARROW_H).getCentreY();
 
     // FX
-    for (int x = 0; x < MAX_STREAM_FX; ++x)
+    for (int x = 0; x < MAX_GENERATOR_FX; ++x)
     {
         if (fxCards[(size_t) x])
         {
-            fxCards[(size_t) x]->setBounds (a.removeFromTop (StreamFxCard::CARD_H));
+            fxCards[(size_t) x]->setBounds (a.removeFromTop (GeneratorFxCard::CARD_H));
             a.removeFromTop (4);
         }
     }
-    if (st.numFx < MAX_STREAM_FX)
+    if (gen.numFx < MAX_GENERATOR_FX)
     {
         addFxBtn.setBounds (a.removeFromTop (28).reduced (4, 2));
         a.removeFromTop (4);
     }
-    addFxBtn.setVisible (st.numFx < MAX_STREAM_FX);
+    addFxBtn.setVisible (gen.numFx < MAX_GENERATOR_FX);
 
-    // Footer: level + pan
+    // Footer: level + pan — aligned to the same column grid as everything above
     a.removeFromTop (4);
-    const int fw = a.getWidth() / 2;
-    levelKnob .setBounds (a.removeFromLeft (fw).reduced (4, 2));
-    streamPan .setBounds (a.reduced (4, 2));
+    levelKnob.setBounds (a.removeFromLeft (r1w).reduced (2, 1));
+    a.removeFromLeft (r1w * 4);
+    generatorPan.setBounds (a.removeFromLeft (r1w).reduced (2, 1));
 }
 
 //==============================================================================
-// StreamPanel
+// GeneratorPanel
 //==============================================================================
-StreamPanel::StreamPanel (ViolentAudioProcessor& p) : processor (p)
+GeneratorPanel::GeneratorPanel (ViolentAudioProcessor& p) : processor (p)
 {
     addAndMakeVisible (addBtn);
     addBtn.onClick = [this]
     {
-        if (processor.numActiveStreams >= MAX_STREAMS) return;
-        ++processor.numActiveStreams;
+        if (processor.numActiveGenerators >= MAX_GENERATORS) return;
+        ++processor.numActiveGenerators;
         rebuild();
         if (onLayoutChanged) onLayoutChanged();
     };
     rebuild();
 }
 
-void StreamPanel::rebuild()
+void GeneratorPanel::refreshFromState()
 {
-    const int n = processor.numActiveStreams;
-    for (int s = 0; s < MAX_STREAMS; ++s)
+    rebuild (true);
+}
+
+void GeneratorPanel::rebuild (bool forceRecreate)
+{
+    const int n = processor.numActiveGenerators;
+    for (int s = 0; s < MAX_GENERATORS; ++s)
     {
         if (s < n)
         {
-            if (!cards[(size_t) s])
+            if (!cards[(size_t) s] || forceRecreate)
             {
-                cards[(size_t) s] = std::make_unique<StreamCard> (processor, s);
+                cards[(size_t) s] = std::make_unique<GeneratorCard> (processor, s);
                 addAndMakeVisible (*cards[(size_t) s]);
                 cards[(size_t) s]->onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
                 cards[(size_t) s]->onRemove = [this, s]
                 {
-                    if (processor.numActiveStreams <= 1) return;
-                    // Shift stream states down
-                    for (int j = s; j < processor.numActiveStreams - 1; ++j)
-                        processor.streams[(size_t) j] = processor.streams[(size_t) (j + 1)];
-                    processor.streams[(size_t) (--processor.numActiveStreams)] = {};
+                    if (processor.numActiveGenerators <= 1) return;
+                    // Shift generator states down
+                    for (int j = s; j < processor.numActiveGenerators - 1; ++j)
+                        processor.generators[(size_t) j] = processor.generators[(size_t) (j + 1)];
+                    processor.generators[(size_t) (--processor.numActiveGenerators)] = {};
                     rebuild();
                     if (onLayoutChanged) onLayoutChanged();
                 };
@@ -641,61 +806,472 @@ void StreamPanel::rebuild()
     resized();
 }
 
-int StreamPanel::preferredHeight() const noexcept
+int GeneratorPanel::preferredHeight() const noexcept
 {
     int h = 8;
-    for (int s = 0; s < processor.numActiveStreams; ++s)
+    for (int s = 0; s < processor.numActiveGenerators; ++s)
         if (cards[(size_t) s]) h += cards[(size_t) s]->preferredHeight() + 8;
     h += 40; // add button
     return h;
 }
 
-void StreamPanel::resized()
+void GeneratorPanel::resized()
 {
     auto a = getLocalBounds().reduced (8, 4);
-    for (int s = 0; s < processor.numActiveStreams; ++s)
+    for (int s = 0; s < processor.numActiveGenerators; ++s)
     {
         if (!cards[(size_t) s]) continue;
         const int h = cards[(size_t) s]->preferredHeight();
         cards[(size_t) s]->setBounds (a.removeFromTop (h));
         a.removeFromTop (8);
     }
-    if (processor.numActiveStreams < MAX_STREAMS)
+    if (processor.numActiveGenerators < MAX_GENERATORS)
         addBtn.setBounds (a.removeFromTop (32).reduced (4, 2));
-    addBtn.setVisible (processor.numActiveStreams < MAX_STREAMS);
+    addBtn.setVisible (processor.numActiveGenerators < MAX_GENERATORS);
+}
+
+//==============================================================================
+// MasterFilterRow
+//==============================================================================
+MasterFilterRow::MasterFilterRow (ViolentAudioProcessor& p, int filterSlot)
+    : processor (p), slot (filterSlot),
+      typeSelector (p.apvts, ParamIDs::masterFltType (filterSlot)),
+      responseView (p.apvts, ParamIDs::masterFltType (filterSlot),
+                    ParamIDs::masterFltCut (filterSlot), ParamIDs::masterFltRes (filterSlot))
+{
+    nameLabel.setText ("Filter " + juce::String (slot + 1), juce::dontSendNotification);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    addAndMakeVisible (nameLabel);
+
+    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
+    addAndMakeVisible (removeBtn);
+    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
+
+    addAndMakeVisible (typeSelector);
+
+    for (auto* k : { &cutoffKnob, &resKnob }) addAndMakeVisible (*k);
+    addAndMakeVisible (responseView);
+
+    cutoffAtt = std::make_unique<SA> (processor.apvts, ParamIDs::masterFltCut  (slot), cutoffKnob.slider);
+    resAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::masterFltRes  (slot), resKnob.slider);
+
+    routingLabel.setText ("Applies to:", juce::dontSendNotification);
+    routingLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    routingLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f)));
+    addAndMakeVisible (routingLabel);
+
+    auto& mf = processor.masterFilters[(size_t) slot];
+    for (int g = 0; g < MAX_GENERATORS; ++g)
+    {
+        auto& btn = routingBtns[(size_t) g];
+        btn.setButtonText (juce::String (g + 1));
+        btn.setClickingTogglesState (true);
+        btn.setToggleState (mf.routing[(size_t) g], juce::dontSendNotification);
+        btn.onClick = [this, g]
+        {
+            processor.masterFilters[(size_t) slot].routing[(size_t) g] = routingBtns[(size_t) g].getToggleState();
+        };
+        addAndMakeVisible (btn);
+    }
+}
+
+MasterFilterRow::~MasterFilterRow() {}
+
+void MasterFilterRow::paint (juce::Graphics& g)
+{
+    g.setColour (ViolentColours::surface);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
+}
+
+void MasterFilterRow::resized()
+{
+    auto a = getLocalBounds().reduced (4, 3);
+
+    auto routingRow = a.removeFromBottom (28);
+    a.removeFromBottom (2);
+
+    auto top = a.removeFromTop (40);
+    removeBtn   .setBounds (top.removeFromLeft  (24));
+    nameLabel   .setBounds (top.removeFromLeft  (60));
+    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
+    const int kw = top.getWidth() / 2;
+    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
+    resKnob   .setBounds (top.reduced (3, 2));
+
+    a.removeFromTop (2);
+    responseView.setBounds (a);
+
+    routingLabel.setBounds (routingRow.removeFromLeft (70));
+    for (auto& btn : routingBtns)
+        btn.setBounds (routingRow.removeFromLeft (26).reduced (2, 2));
+}
+
+//==============================================================================
+// MasterFilterPanel
+//==============================================================================
+MasterFilterPanel::MasterFilterPanel (ViolentAudioProcessor& p) : processor (p)
+{
+    sectionLabel.setText ("MASTER FILTERS - applied last, after every generator",
+                           juce::dontSendNotification);
+    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
+    addAndMakeVisible (sectionLabel);
+
+    addAndMakeVisible (addBtn);
+    addBtn.onClick = [this]
+    {
+        if (processor.numMasterFilters >= MAX_MASTER_FILTERS) return;
+        ++processor.numMasterFilters;
+        rebuild();
+        if (onLayoutChanged) onLayoutChanged();
+    };
+    rebuild();
+}
+
+void MasterFilterPanel::refreshFromState()
+{
+    rebuild (true);
+}
+
+void MasterFilterPanel::rebuild (bool forceRecreate)
+{
+    const int n = processor.numMasterFilters;
+    for (int f = 0; f < MAX_MASTER_FILTERS; ++f)
+    {
+        if (f < n)
+        {
+            if (!rows[(size_t) f] || forceRecreate)
+            {
+                rows[(size_t) f] = std::make_unique<MasterFilterRow> (processor, f);
+                addAndMakeVisible (*rows[(size_t) f]);
+                rows[(size_t) f]->onRemove = [this, f]
+                {
+                    for (int j = f; j < processor.numMasterFilters - 1; ++j)
+                        processor.masterFilters[(size_t) j] = processor.masterFilters[(size_t) (j + 1)];
+                    processor.masterFilters[(size_t) (--processor.numMasterFilters)] = {};
+                    rebuild();
+                    if (onLayoutChanged) onLayoutChanged();
+                };
+            }
+        }
+        else
+        {
+            rows[(size_t) f] = nullptr;
+        }
+    }
+    resized();
+}
+
+int MasterFilterPanel::preferredHeight() const noexcept
+{
+    int h = 8 + 24; // section label
+    for (int f = 0; f < processor.numMasterFilters; ++f)
+        if (rows[(size_t) f]) h += MasterFilterRow::ROW_H + 8;
+    h += 40; // add button
+    return h;
+}
+
+void MasterFilterPanel::resized()
+{
+    auto a = getLocalBounds().reduced (8, 4);
+    sectionLabel.setBounds (a.removeFromTop (24));
+    for (int f = 0; f < processor.numMasterFilters; ++f)
+    {
+        if (!rows[(size_t) f]) continue;
+        rows[(size_t) f]->setBounds (a.removeFromTop (MasterFilterRow::ROW_H));
+        a.removeFromTop (8);
+    }
+    if (processor.numMasterFilters < MAX_MASTER_FILTERS)
+        addBtn.setBounds (a.removeFromTop (32).reduced (4, 2));
+    addBtn.setVisible (processor.numMasterFilters < MAX_MASTER_FILTERS);
+}
+
+//==============================================================================
+// MixerChannel
+//==============================================================================
+MixerChannel::MixerChannel (ViolentAudioProcessor& p, int generatorIdx)
+    : processor (p), generator (generatorIdx)
+{
+    nameLabel.setText ("Gen " + juce::String (generator + 1), juce::dontSendNotification);
+    nameLabel.setJustificationType (juce::Justification::centred);
+    nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    addAndMakeVisible (nameLabel);
+
+    levelSlider.setSliderStyle (juce::Slider::LinearVertical);
+    levelSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    addAndMakeVisible (levelSlider);
+    levelAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, ParamIDs::generatorLevel (generator), levelSlider);
+
+    startTimerHz (20);
+}
+
+void MixerChannel::resized()
+{
+    auto a = getLocalBounds().reduced (4, 4);
+    nameLabel.setBounds (a.removeFromTop (16));
+    a.removeFromTop (2);
+    levelSlider.setBounds (a);
+}
+
+void MixerChannel::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+    g.setColour (ViolentColours::surface);
+    g.fillRoundedRectangle (b.reduced (1.0f), 5.0f);
+    g.setColour (ViolentColours::overlay);
+    g.drawRoundedRectangle (b.reduced (1.0f), 5.0f, 1.0f);
+
+    const bool enabled = processor.generators[(size_t) generator].enabled;
+    const float level  = processor.generatorLevelMeter[(size_t) generator].load (std::memory_order_relaxed);
+    const float db     = juce::Decibels::gainToDecibels (juce::jmax (0.0001f, level));
+    const float norm   = juce::jlimit (0.0f, 1.0f, (db + 48.0f) / 48.0f);
+
+    auto meterArea = b.removeFromRight (7.0f).reduced (1.5f, 22.0f);
+    g.setColour (ViolentColours::background);
+    g.fillRoundedRectangle (meterArea, 2.0f);
+    g.setColour (enabled ? ViolentColours::green : ViolentColours::overlay);
+    g.fillRoundedRectangle (meterArea.withTop (meterArea.getBottom() - meterArea.getHeight() * norm), 2.0f);
+}
+
+//==============================================================================
+// MixerPanel
+//==============================================================================
+MixerPanel::MixerPanel (ViolentAudioProcessor& p) : processor (p)
+{
+    sectionLabel.setText ("MIXER", juce::dontSendNotification);
+    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
+    addAndMakeVisible (sectionLabel);
+
+    rebuild();
+}
+
+void MixerPanel::rebuild()
+{
+    for (int s = 0; s < MAX_GENERATORS; ++s)
+    {
+        if (s < processor.numActiveGenerators)
+        {
+            if (!channels[(size_t) s])
+            {
+                channels[(size_t) s] = std::make_unique<MixerChannel> (processor, s);
+                addAndMakeVisible (*channels[(size_t) s]);
+            }
+        }
+        else
+        {
+            channels[(size_t) s] = nullptr;
+        }
+    }
+    resized();
+}
+
+void MixerPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (ViolentColours::background);
+}
+
+void MixerPanel::resized()
+{
+    auto a = getLocalBounds().reduced (8, 4);
+    sectionLabel.setBounds (a.removeFromTop (20));
+    a.removeFromTop (2);
+
+    constexpr int chanW = 64;
+    for (int s = 0; s < processor.numActiveGenerators; ++s)
+    {
+        if (!channels[(size_t) s]) continue;
+        channels[(size_t) s]->setBounds (a.removeFromLeft (chanW));
+        a.removeFromLeft (6);
+    }
+}
+
+//==============================================================================
+// ScalableRackComponent
+//==============================================================================
+ScalableRackComponent::ScalableRackComponent (ViolentAudioProcessor& p)
+    : processor (p), generatorPanel (p), masterFilterPanel (p), mixerPanel (p)
+{
+    addAndMakeVisible (generatorPanel);
+    addAndMakeVisible (masterFilterPanel);
+    addAndMakeVisible (mixerPanel);
+
+    generatorPanel.onLayoutChanged = [this] { mixerPanel.rebuild(); if (onLayoutChanged) onLayoutChanged(); };
+    masterFilterPanel.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
+}
+
+int ScalableRackComponent::preferredHeight() const noexcept
+{
+    return generatorPanel.preferredHeight() + masterFilterPanel.preferredHeight() + MixerPanel::PANEL_H;
+}
+
+void ScalableRackComponent::refreshFromState()
+{
+    generatorPanel.refreshFromState();
+    masterFilterPanel.refreshFromState();
+    mixerPanel.rebuild();
+    resized();
+}
+
+void ScalableRackComponent::resized()
+{
+    const int genH = generatorPanel.preferredHeight();
+    generatorPanel.setBounds (0, 0, BASE_WIDTH, genH);
+    generatorPanel.resized();
+
+    const int mfH = masterFilterPanel.preferredHeight();
+    masterFilterPanel.setBounds (0, genH, BASE_WIDTH, mfH);
+    masterFilterPanel.resized();
+
+    mixerPanel.setBounds (0, genH + mfH, BASE_WIDTH, MixerPanel::PANEL_H);
+    mixerPanel.resized();
 }
 
 //==============================================================================
 // ViolentAudioProcessorEditor
 //==============================================================================
 ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor& p)
-    : AudioProcessorEditor (p), processor (p), streamPanel (p)
+    : AudioProcessorEditor (p), processor (p), rack (p)
 {
     setLookAndFeel (&laf);
     setResizable (false, true);
-    setResizeLimits (960, 300, 960, 4000);
+    setResizeLimits (juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 0.6f), 200,
+                      juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 1.5f), 6000);
 
-    addAndMakeVisible (streamPanel);
+    addAndMakeVisible (rack);
     addAndMakeVisible (meter);
 
-    streamPanel.onLayoutChanged = [this] { updateHeight(); };
+    previewBtn.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xE2\x96\xB6")));
+    previewBtn.setClickingTogglesState (true);
+    previewBtn.setToggleState (false, juce::dontSendNotification);
+    previewBtn.onClick = [this]
+    {
+        processor.previewActive.store (previewBtn.getToggleState(), std::memory_order_relaxed);
+    };
+    addAndMakeVisible (previewBtn);
+
+    for (const auto& t : { "Arpeggios", "Low Notes", "Long Single Notes", "Chords" })
+        previewPatternBox.addItem (t, previewPatternBox.getNumItems() + 1);
+    previewPatternBox.setRepaintsOnMouseActivity (true);
+    previewPatternBox.setSelectedItemIndex (0, juce::dontSendNotification);
+    previewPatternBox.onChange = [this]
+    {
+        processor.setPreviewPattern (previewPatternBox.getSelectedItemIndex());
+    };
+    addAndMakeVisible (previewPatternBox);
+
+    presetBox.setRepaintsOnMouseActivity (true);
+    presetBox.setTextWhenNothingSelected ("Select preset...");
+    presetBox.setTextWhenNoChoicesAvailable ("No presets");
+    presetBox.onChange = [this] { loadSelectedPreset(); };
+    addAndMakeVisible (presetBox);
+    refreshPresetList();
+
+    savePresetBtn.onClick = [this] { promptAndSavePreset(); };
+    addAndMakeVisible (savePresetBtn);
+
+    zoomOutBtn.onClick = [this] { setUiScale (uiScale - 0.1f); };
+    zoomInBtn.onClick  = [this] { setUiScale (uiScale + 0.1f); };
+    addAndMakeVisible (zoomOutBtn);
+    addAndMakeVisible (zoomInBtn);
+
+    zoomLabel.setJustificationType (juce::Justification::centred);
+    zoomLabel.setColour (juce::Label::textColourId, ViolentColours::text);
+    zoomLabel.setColour (juce::Label::backgroundColourId, ViolentColours::overlay);
+    zoomLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (14.0f).withStyle ("Bold")));
+    addAndMakeVisible (zoomLabel);
+    zoomLabel.setVisible (false);
+
+    rack.onLayoutChanged = [this] { updateHeight(); };
 
     updateHeight();
 }
 
 ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
 {
+    processor.previewActive.store (false, std::memory_order_relaxed);
     setLookAndFeel (nullptr);
-}
-
-int ViolentAudioProcessorEditor::editorHeight() const noexcept
-{
-    return 52 + streamPanel.preferredHeight();
 }
 
 void ViolentAudioProcessorEditor::updateHeight()
 {
-    setSize (getWidth(), editorHeight());
+    const int newW = juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
+    const int newH = 52 + juce::roundToInt (rack.preferredHeight() * uiScale);
+
+    if (newW == getWidth() && newH == getHeight())
+        resized(); // size unchanged, but layout/scale may still need re-applying
+    else
+        setSize (newW, newH);
+}
+
+void ViolentAudioProcessorEditor::setUiScale (float newScale)
+{
+    newScale = juce::jlimit (0.6f, 1.5f, newScale);
+    if (juce::approximatelyEqual (newScale, uiScale)) return;
+
+    uiScale = newScale;
+    updateHeight();
+
+    zoomLabel.setText (juce::String (juce::roundToInt (uiScale * 100.0f)) + "%", juce::dontSendNotification);
+    zoomLabel.setVisible (true);
+    startTimer (5000);
+}
+
+void ViolentAudioProcessorEditor::timerCallback()
+{
+    zoomLabel.setVisible (false);
+    stopTimer();
+}
+
+void ViolentAudioProcessorEditor::refreshPresetList()
+{
+    presetBox.clear (juce::dontSendNotification);
+    const auto names = processor.getPresetNames();
+    int idToSelect = 0;
+    for (int i = 0; i < names.size(); ++i)
+    {
+        presetBox.addItem (names[i], i + 1);
+        if (names[i] == processor.currentPresetName)
+            idToSelect = i + 1;
+    }
+    presetBox.setSelectedId (idToSelect, juce::dontSendNotification);
+}
+
+void ViolentAudioProcessorEditor::loadSelectedPreset()
+{
+    const auto name = presetBox.getText();
+    if (name.isEmpty()) return;
+
+    if (processor.loadPreset (name))
+    {
+        rack.refreshFromState();
+        updateHeight();
+    }
+}
+
+void ViolentAudioProcessorEditor::promptAndSavePreset()
+{
+    auto* aw = new juce::AlertWindow ("Save Preset", "Enter a name for this preset:", juce::AlertWindow::NoIcon);
+    aw->addTextEditor ("name", processor.currentPresetName.isNotEmpty() ? processor.currentPresetName : "My Preset");
+    aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    aw->enterModalState (false, juce::ModalCallbackFunction::create ([this, aw] (int result)
+    {
+        if (result == 1)
+        {
+            const auto name = aw->getTextEditorContents ("name").trim();
+            if (name.isNotEmpty() && processor.savePreset (name))
+                refreshPresetList();
+        }
+    }), true);
+
+    if (auto* nameEditor = aw->getTextEditor ("name"))
+    {
+        nameEditor->selectAll();
+        nameEditor->grabKeyboardFocus();
+    }
 }
 
 void ViolentAudioProcessorEditor::paint (juce::Graphics& g)
@@ -716,6 +1292,17 @@ void ViolentAudioProcessorEditor::resized()
     meter.setLevels (processor.levelL.load (std::memory_order_relaxed),
                      processor.levelR.load (std::memory_order_relaxed));
 
-    streamPanel.setBounds (0, 52, getWidth(), getHeight() - 52);
-    streamPanel.resized();
+    previewBtn.setBounds (getWidth() - 84, 12, 30, 26);
+    previewPatternBox.setBounds (getWidth() - 234, 12, 140, 26);
+
+    presetBox.setBounds (150, 12, 180, 26);
+    savePresetBtn.setBounds (336, 12, 56, 26);
+
+    zoomOutBtn.setBounds (savePresetBtn.getRight() + 16, 12, 26, 26);
+    zoomInBtn.setBounds (zoomOutBtn.getRight() + 4, 12, 26, 26);
+    zoomLabel.setBounds (zoomInBtn.getRight() + 8, 12, 60, 26);
+
+    const int rackH = rack.preferredHeight();
+    rack.setBounds (0, 0, ScalableRackComponent::BASE_WIDTH, rackH);
+    rack.setTransform (juce::AffineTransform::scale (uiScale).translated (0.0f, 52.0f));
 }

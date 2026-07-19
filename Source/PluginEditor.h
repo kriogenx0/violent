@@ -5,17 +5,19 @@
 //==============================================================================
 namespace ViolentColours
 {
-    static const juce::Colour background { 0xff111111 };
-    static const juce::Colour surface    { 0xff1e1e2e };
-    static const juce::Colour overlay    { 0xff313244 };
-    static const juce::Colour text       { 0xffcdd6f4 };
-    static const juce::Colour subtext    { 0xff7f849c };
-    static const juce::Colour accent     { 0xffcba6f7 };
+    static const juce::Colour background { 0xff0a0a0a };
+    static const juce::Colour surface    { 0xff1a1a1a };
+    static const juce::Colour overlay    { 0xff2c2c2c };
+    static const juce::Colour text       { 0xffe8e8e8 };
+    static const juce::Colour subtext    { 0xff8c8c8c };
+    static const juce::Colour accent     { 0xffff7a29 };
     static const juce::Colour green      { 0xffa6e3a1 };
     static const juce::Colour red        { 0xfff38ba8 };
     static const juce::Colour yellow     { 0xfff9e2af };
     static const juce::Colour blue       { 0xff89b4fa };
     static const juce::Colour teal       { 0xff94e2d5 };
+
+    static constexpr float cornerRadius = 6.0f;
 }
 
 //==============================================================================
@@ -31,7 +33,210 @@ public:
                            juce::Slider::SliderStyle, juce::Slider&) override;
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool, bool) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
+    void drawComboBox (juce::Graphics&, int width, int height, bool isButtonDown,
+                        int buttonX, int buttonY, int buttonW, int buttonH,
+                        juce::ComboBox&) override;
     juce::Font getLabelFont (juce::Label&) override;
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
+    juce::Font getPopupMenuFont() override;
+
+private:
+    /** Shared background+border rendering for TextButton/ToggleButton/ComboBox,
+        so all three read as one consistent control style, including hover. */
+    static void paintControlShape (juce::Graphics&, juce::Rectangle<float> bounds,
+                                    bool isOn, bool isHovered);
+};
+
+//==============================================================================
+/** A standard button (same rounded-rect chrome as everything else) with a
+    drawn trash-can glyph instead of text — used for destructive "remove". */
+class TrashButton : public juce::TextButton
+{
+public:
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+    {
+        getLookAndFeel().drawButtonBackground (g, *this,
+            findColour (juce::TextButton::buttonColourId), highlighted, down);
+
+        auto sq = getLocalBounds().toFloat().withSizeKeepingCentre (
+            juce::jmin (getWidth(), getHeight()) * 0.85f, juce::jmin (getWidth(), getHeight()) * 0.85f);
+        auto b = sq.reduced (sq.getWidth() * 0.24f, sq.getHeight() * 0.14f);
+        g.setColour (ViolentColours::red);
+
+        juce::Path p;
+        const float lidY = b.getY() + b.getHeight() * 0.16f;
+        p.addRoundedRectangle (b.getX() - 1.0f, lidY, b.getWidth() + 2.0f, b.getHeight() * 0.14f, 1.0f);
+        p.addRoundedRectangle (b.getX() + b.getWidth() * 0.28f, b.getY(),
+                                b.getWidth() * 0.44f, b.getHeight() * 0.16f, 1.0f);
+        const auto body = b.withY (lidY + b.getHeight() * 0.18f)
+                            .withHeight (b.getHeight() * 0.7f);
+        p.addRoundedRectangle (body, 1.2f);
+        g.strokePath (p, juce::PathStrokeType (1.1f));
+
+        for (float fx : { 0.32f, 0.5f, 0.68f })
+            g.drawLine (b.getX() + b.getWidth() * fx, body.getY() + 3.0f,
+                        b.getX() + b.getWidth() * fx, body.getBottom() - 3.0f, 0.9f);
+    }
+};
+
+//==============================================================================
+/** LP / HP / BP / Notch selector — four buttons standing in for what used to
+    be a dropdown, bound directly to an AudioParameterChoice via a
+    ParameterAttachment (so it works like any other custom parameter control). */
+class FilterTypeSelector : public juce::Component
+{
+public:
+    FilterTypeSelector (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID)
+        : attachment (*apvts.getParameter (paramID),
+                       [this] (float v) { setSelectedIndex ((int) std::round (v)); },
+                       apvts.undoManager)
+    {
+        static const char* names[] = { "LP", "HP", "BP", "Notch" };
+        for (int i = 0; i < 4; ++i)
+        {
+            auto& b = buttons[(size_t) i];
+            b.setButtonText (names[i]);
+            b.setClickingTogglesState (false);
+            b.onClick = [this, i] { attachment.setValueAsCompleteGesture ((float) i); };
+            addAndMakeVisible (b);
+        }
+        attachment.sendInitialUpdate();
+    }
+
+    void resized() override
+    {
+        auto a = getLocalBounds();
+        const int w = a.getWidth() / 4;
+        for (int i = 0; i < 4; ++i)
+            buttons[(size_t) i].setBounds ((i < 3 ? a.removeFromLeft (w) : a).reduced (1, 0));
+    }
+
+private:
+    void setSelectedIndex (int idx)
+    {
+        for (int i = 0; i < 4; ++i)
+            buttons[(size_t) i].setToggleState (i == idx, juce::dontSendNotification);
+    }
+
+    std::array<juce::TextButton, 4> buttons;
+    juce::ParameterAttachment attachment;
+};
+
+//==============================================================================
+/** Draws the approximate magnitude response of a 2nd-order LP/HP/BP/Notch
+    filter (20Hz-20kHz, log frequency) with the cutoff marked, polling the
+    live parameter values so it tracks knob moves and automation alike. */
+class FilterResponseView : public juce::Component, private juce::Timer
+{
+public:
+    FilterResponseView (juce::AudioProcessorValueTreeState& s, juce::String typeID,
+                         juce::String cutID, juce::String resID)
+        : apvts (s), typeParamID (std::move (typeID)),
+          cutParamID (std::move (cutID)), resParamID (std::move (resID))
+    {
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (ViolentColours::background);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+        const int   type   = (int) apvts.getRawParameterValue (typeParamID)->load();
+        const float cutoff = juce::jlimit (20.0f, 20000.0f, apvts.getRawParameterValue (cutParamID)->load());
+        const float q      = juce::jmax (0.1f, apvts.getRawParameterValue (resParamID)->load());
+
+        auto plot = b.reduced (4.0f);
+        constexpr float minDb = -24.0f, maxDb = 6.0f;
+        constexpr float logMin = 1.30103f, logMax = 4.30103f; // log10(20), log10(20000)
+
+        auto dbAt = [&] (float freq)
+        {
+            const float x  = freq / cutoff;
+            const float x2 = x * x;
+            const float denom = (1.0f - x2) * (1.0f - x2) + (x2 / (q * q));
+            float magSq;
+            switch (type)
+            {
+                case 1:  magSq = (x2 * x2) / denom; break;                    // HP
+                case 2:  magSq = (x2 / (q * q)) / denom; break;               // BP
+                case 3:  magSq = ((1.0f - x2) * (1.0f - x2)) / denom; break;  // Notch
+                default: magSq = 1.0f / denom; break;                        // LP
+            }
+            return 10.0f * std::log10 (juce::jmax (1.0e-6f, magSq));
+        };
+
+        juce::Path path;
+        constexpr int steps = 96;
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float freq = std::pow (10.0f, logMin + (logMax - logMin) * (float) i / (float) steps);
+            const float norm = juce::jlimit (0.0f, 1.0f, (dbAt (freq) - minDb) / (maxDb - minDb));
+            const float px = plot.getX() + plot.getWidth() * (float) i / (float) steps;
+            const float py = plot.getBottom() - norm * plot.getHeight();
+            if (i == 0) path.startNewSubPath (px, py); else path.lineTo (px, py);
+        }
+        g.setColour (ViolentColours::accent);
+        g.strokePath (path, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved));
+
+        const float cutNorm = (std::log10 (cutoff) - logMin) / (logMax - logMin);
+        const float cutX = plot.getX() + plot.getWidth() * cutNorm;
+        g.setColour (ViolentColours::accent.withAlpha (0.4f));
+        g.drawVerticalLine ((int) cutX, plot.getY(), plot.getBottom());
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    juce::AudioProcessorValueTreeState& apvts;
+    juce::String typeParamID, cutParamID, resParamID;
+};
+
+//==============================================================================
+/** Live scope of a generator's raw source waveform (pre-filter/FX), polled
+    from the audio-thread snapshot the processor keeps per generator. */
+class WaveformView : public juce::Component, private juce::Timer
+{
+public:
+    WaveformView (ViolentAudioProcessor& p, int generatorIdx)
+        : processor (p), generator (generatorIdx)
+    {
+        startTimerHz (24);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (ViolentColours::background);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+        auto plot = b.reduced (5.0f, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawHorizontalLine ((int) plot.getCentreY(), plot.getX(), plot.getRight());
+
+        const auto& snap = processor.waveformSnapshot[(size_t) generator];
+        juce::Path path;
+        for (size_t i = 0; i < snap.size(); ++i)
+        {
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) (snap.size() - 1);
+            const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, snap[i]) * plot.getHeight() * 0.5f;
+            if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+        }
+        g.setColour (ViolentColours::accent);
+        g.strokePath (path, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved));
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    ViolentAudioProcessor& processor;
+    int generator;
 };
 
 //==============================================================================
@@ -66,14 +271,14 @@ private:
 };
 
 //==============================================================================
-/** One FX card inside a stream's effect chain. */
-class StreamFxCard : public juce::Component
+/** One FX card inside a generator's effect chain. */
+class GeneratorFxCard : public juce::Component
 {
 public:
     static constexpr int CARD_H = 100;
 
-    StreamFxCard (ViolentAudioProcessor& p, int streamIdx, int fxSlot);
-    ~StreamFxCard() override;
+    GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, int fxSlot);
+    ~GeneratorFxCard() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -83,7 +288,7 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int stream, slot;
+    int generator, slot;
 
     juce::TextButton removeBtn { "X" };
     juce::Label      titleLabel;
@@ -114,18 +319,54 @@ private:
     void setAllInvisible();
     void layoutKnobs (std::initializer_list<LabelledKnob*>, juce::Rectangle<int>);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamFxCard)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorFxCard)
 };
 
 //==============================================================================
-/** One filter row inside a stream. */
-class StreamFilterRow : public juce::Component
+/** MIDI modifier — sits before the generator: transpose, octave shift,
+    quantize-to-key, and a simple held-note arpeggiator. */
+class GeneratorMidiRow : public juce::Component
 {
 public:
-    static constexpr int ROW_H = 70;
+    static constexpr int ROW_H = 58;
 
-    StreamFilterRow (ViolentAudioProcessor& p, int streamIdx, int filterSlot);
-    ~StreamFilterRow() override;
+    GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx);
+
+    void resized() override;
+    void paint (juce::Graphics&) override;
+
+private:
+    ViolentAudioProcessor& processor;
+    int generator;
+
+    juce::Label      sectionLabel;
+    LabelledKnob     transposeKnob { "Transpose", ViolentColours::teal   };
+    LabelledKnob     octaveKnob    { "Octave",    ViolentColours::blue   };
+    juce::TextButton keyBtn        { "Key" };
+    juce::ComboBox   keyRootBox;
+    juce::ComboBox   keyScaleBox;
+    juce::TextButton arpBtn        { "Arp" };
+    LabelledKnob     arpRateKnob  { "Arp Rate", ViolentColours::yellow };
+
+    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::unique_ptr<SA> transposeAtt, octaveAtt, arpRateAtt;
+    std::unique_ptr<CA> keyRootAtt, keyScaleAtt;
+    std::unique_ptr<BA> keyEnAtt, arpEnAtt;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorMidiRow)
+};
+
+//==============================================================================
+/** One filter row inside a generator. */
+class GeneratorFilterRow : public juce::Component
+{
+public:
+    static constexpr int ROW_H = 112;
+
+    GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot);
+    ~GeneratorFilterRow() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -134,34 +375,34 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int stream, slot;
+    int generator, slot;
 
     juce::TextButton removeBtn { "X" };
     juce::Label      nameLabel;
-    juce::ComboBox   typeBox;
+    FilterTypeSelector typeSelector;
     LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
     LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
+    FilterResponseView responseView;
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<CA> typeAtt;
     std::unique_ptr<SA> cutoffAtt, resAtt;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamFilterRow)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorFilterRow)
 };
 
 //==============================================================================
-/** One complete stream card: source + filters + FX + level/pan. */
-class StreamCard : public juce::Component
+/** One complete generator card: source + filters + FX + level/pan. */
+class GeneratorCard : public juce::Component
 {
 public:
     static constexpr int SOURCE_H  = 150;  // source section height
     static constexpr int HEADER_H  = 36;
     static constexpr int FOOTER_H  = 44;
+    static constexpr int ARROW_H   = 20;   // gap reserved for a routing arrow
 
-    StreamCard (ViolentAudioProcessor& p, int streamIdx);
-    ~StreamCard() override;
+    GeneratorCard (ViolentAudioProcessor& p, int generatorIdx);
+    ~GeneratorCard() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -173,18 +414,25 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int stream;
+    int generator;
 
     // Header
-    juce::TextButton removeBtn    { "X" };
+    TrashButton      removeBtn;
     juce::Label      nameLabel;
     juce::ToggleButton enableBtn;
+    WaveformView     waveformView;
+
+    // MIDI modifier — before the generator
+    GeneratorMidiRow midiRow;
 
     // Source section
+    juce::TextButton synthModeBtn   { "Synth" };
+    juce::TextButton samplerModeBtn { "Sampler" };
     juce::ComboBox   srcTypeBox;
     juce::Label      srcTypeLabel;
-    juce::TextButton loadSampleBtn { "Load…" };
+    juce::TextButton loadSampleBtn { "Load..." };
     juce::Label      sampleFileLabel;
+    int lastWaveformIndex = 0;
 
     LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
     LabelledKnob octKnob     { "Oct",     ViolentColours::text    };
@@ -205,14 +453,14 @@ private:
 
     // Footer: level + pan
     LabelledKnob levelKnob { "Level", ViolentColours::accent };
-    LabelledKnob streamPan { "Pan",   ViolentColours::yellow };
+    LabelledKnob generatorPan { "Pan",   ViolentColours::yellow };
 
     // Filter chain
-    std::array<std::unique_ptr<StreamFilterRow>, MAX_STREAM_FILTERS> filterRows;
+    std::array<std::unique_ptr<GeneratorFilterRow>, MAX_GENERATOR_FILTERS> filterRows;
     juce::TextButton addFilterBtn { "+ Filter" };
 
     // FX chain
-    std::array<std::unique_ptr<StreamFxCard>, MAX_STREAM_FX> fxCards;
+    std::array<std::unique_ptr<GeneratorFxCard>, MAX_GENERATOR_FX> fxCards;
     juce::TextButton addFxBtn { "+ Effect" };
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -223,20 +471,34 @@ private:
     std::unique_ptr<CA> srcTypeAtt;
     std::unique_ptr<SA> gainAtt, octAtt, semiAtt, detAtt, phaseAtt, pwAtt, panSrcAtt,
                         velAtt, uniAtt, uniSpreadAtt, attAtt, decAtt, susAtt, relAtt;
-    std::unique_ptr<SA> levelAtt, streamPanAtt;
+    std::unique_ptr<SA> levelAtt, generatorPanAtt;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamCard)
+    // Y-centres (local coords) of the routing arrows drawn between sections,
+    // computed in resized() and used by paint().
+    int midiArrowY = 0, filterArrowY = 0, effectArrowY = 0;
+    void drawRoutingArrow (juce::Graphics&, int y) const;
+
+    // Bounding box of the ADSR envelope, boxed and drawn in paint().
+    juce::Rectangle<int> adsrBoxBounds;
+
+    // Construct/wire a filter row or FX card in one place, so every call site
+    // (initial load, "+" button, shift-after-remove) stays consistent —
+    // in particular, so removal actually gets wired up every time.
+    void addFilterRow (int arrayIndex, int paramSlot);
+    void addFxCard (int arrayIndex, FxType type);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorCard)
 };
 
 //==============================================================================
-/** Main panel: vertical list of StreamCards. */
-class StreamPanel : public juce::Component
+/** Main panel: vertical list of GeneratorCards. */
+class GeneratorPanel : public juce::Component
 {
 public:
-    explicit StreamPanel (ViolentAudioProcessor& p);
+    explicit GeneratorPanel (ViolentAudioProcessor& p);
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
@@ -244,18 +506,166 @@ public:
 
     int preferredHeight() const noexcept;
 
+    // Tears down and rebuilds every card from scratch, e.g. after a preset load
+    // changes generator counts/modes/filters/fx behind the UI's back.
+    void refreshFromState();
+
 private:
     ViolentAudioProcessor& processor;
-    std::array<std::unique_ptr<StreamCard>, MAX_STREAMS> cards;
-    juce::TextButton addBtn { "+ Add Stream" };
+    std::array<std::unique_ptr<GeneratorCard>, MAX_GENERATORS> cards;
+    juce::TextButton addBtn { "+ Add Generator" };
 
-    void rebuild();
+    void rebuild (bool forceRecreate = false);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorPanel)
 };
 
 //==============================================================================
-class ViolentAudioProcessorEditor : public juce::AudioProcessorEditor
+/** One master filter: type/cutoff/resonance plus which generators route into it.
+    Master filters are applied last, after every generator's own filters/FX. */
+class MasterFilterRow : public juce::Component
+{
+public:
+    static constexpr int ROW_H = 136;
+
+    MasterFilterRow (ViolentAudioProcessor& p, int filterSlot);
+    ~MasterFilterRow() override;
+
+    void resized() override;
+    void paint (juce::Graphics&) override;
+
+    std::function<void()> onRemove;
+
+private:
+    ViolentAudioProcessor& processor;
+    int slot;
+
+    juce::TextButton removeBtn { "X" };
+    juce::Label      nameLabel;
+    FilterTypeSelector typeSelector;
+    LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
+    LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
+    FilterResponseView responseView;
+
+    juce::Label routingLabel;
+    std::array<juce::TextButton, MAX_GENERATORS> routingBtns;
+
+    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
+    std::unique_ptr<SA> cutoffAtt, resAtt;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MasterFilterRow)
+};
+
+//==============================================================================
+/** Master filter chain — added last, after all generators. */
+class MasterFilterPanel : public juce::Component
+{
+public:
+    explicit MasterFilterPanel (ViolentAudioProcessor& p);
+    void resized() override;
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
+
+    std::function<void()> onLayoutChanged;
+
+    int preferredHeight() const noexcept;
+
+    // Tears down and rebuilds every row from scratch, e.g. after a preset load.
+    void refreshFromState();
+
+private:
+    ViolentAudioProcessor& processor;
+    juce::Label sectionLabel;
+    std::array<std::unique_ptr<MasterFilterRow>, MAX_MASTER_FILTERS> rows;
+    juce::TextButton addBtn { "+ Add Filter" };
+
+    void rebuild (bool forceRecreate = false);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MasterFilterPanel)
+};
+
+//==============================================================================
+/** One channel strip in the mixer: name, live level meter, and a fader
+    bound to that generator's Level parameter. */
+class MixerChannel : public juce::Component, private juce::Timer
+{
+public:
+    MixerChannel (ViolentAudioProcessor& p, int generatorIdx);
+
+    void resized() override;
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override { repaint(); }
+
+    ViolentAudioProcessor& processor;
+    int generator;
+
+    juce::Label  nameLabel;
+    juce::Slider levelSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAtt;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerChannel)
+};
+
+//==============================================================================
+/** Mixer strip along the bottom — one channel per active generator. */
+class MixerPanel : public juce::Component
+{
+public:
+    static constexpr int PANEL_H = 132;
+
+    explicit MixerPanel (ViolentAudioProcessor& p);
+    void resized() override;
+    void paint (juce::Graphics& g) override;
+
+    void rebuild();
+
+private:
+    ViolentAudioProcessor& processor;
+    juce::Label sectionLabel;
+    std::array<std::unique_ptr<MixerChannel>, MAX_GENERATORS> channels;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerPanel)
+};
+
+//==============================================================================
+/** The generator rack, master filters, and mixer — laid out at a fixed logical
+    width (BASE_WIDTH). The owning editor scales this whole component uniformly
+    via a transform so '+'/'-' zoom controls can grow or shrink the rack without
+    every child needing to know about the current zoom level. The header toolbar
+    (title, presets, preview, meter) lives on the editor itself and stays fixed
+    size regardless of zoom, so it never collides with the zoom controls. */
+class ScalableRackComponent : public juce::Component
+{
+public:
+    static constexpr int BASE_WIDTH = 960;
+
+    explicit ScalableRackComponent (ViolentAudioProcessor& p);
+
+    void resized() override;
+
+    int preferredHeight() const noexcept;
+
+    // Tears every panel down and rebuilds it from processor state, e.g. after a preset load.
+    void refreshFromState();
+
+    // Fired when preferredHeight() changes (generator/filter added or removed),
+    // so the owning editor can re-run its own zoom-aware sizing.
+    std::function<void()> onLayoutChanged;
+
+private:
+    ViolentAudioProcessor& processor;
+
+    GeneratorPanel generatorPanel;
+    MasterFilterPanel masterFilterPanel;
+    MixerPanel mixerPanel;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScalableRackComponent)
+};
+
+//==============================================================================
+class ViolentAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                     private juce::Timer
 {
 public:
     explicit ViolentAudioProcessorEditor (ViolentAudioProcessor&);
@@ -268,10 +678,28 @@ private:
     ViolentAudioProcessor& processor;
     ViolentLookAndFeel     laf;
 
-    StreamPanel streamPanel;
-    LevelMeter  meter;
+    ScalableRackComponent rack;
 
-    int editorHeight() const noexcept;
+    LevelMeter  meter;
+    juce::TextButton previewBtn;
+    juce::ComboBox   previewPatternBox;
+
+    juce::ComboBox   presetBox;
+    juce::TextButton savePresetBtn { "Save" };
+
+    juce::TextButton zoomOutBtn { "-" };
+    juce::TextButton zoomInBtn  { "+" };
+    juce::Label      zoomLabel;
+
+    float uiScale = 1.0f;
+    void setUiScale (float newScale);
+
+    void timerCallback() override;
+
+    void refreshPresetList();
+    void loadSelectedPreset();
+    void promptAndSavePreset();
+
     void updateHeight();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ViolentAudioProcessorEditor)
