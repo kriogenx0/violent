@@ -120,7 +120,11 @@ void ViolentLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
                                         int, int, int, int, juce::ComboBox& box)
 {
     const auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (1.0f);
-    paintControlShape (g, b, box.isPopupActive(), box.isMouseOver());
+    // ComboBox has an internal Label covering most of its area (the text
+    // display), so a plain isMouseOver() — which excludes children by
+    // default — only ever sees the small uncovered strip near the arrow.
+    // Include children so hover covers the whole control.
+    paintControlShape (g, b, box.isPopupActive(), box.isMouseOver (true));
 
     const float arrowCX = (float) width - 15.0f, arrowCY = (float) height * 0.5f;
     juce::Path arrow;
@@ -184,6 +188,13 @@ void LabelledKnob::resized()
     slider    .setBounds (a);
 }
 
+void LabelledKnob::attachTo (juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID)
+{
+    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        apvts, parameterID, slider);
+    valueLabel.setText (slider.getTextFromValue (slider.getValue()), juce::dontSendNotification);
+}
+
 //==============================================================================
 // LevelMeter
 //==============================================================================
@@ -230,19 +241,19 @@ GeneratorFxCard::GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, in
                      &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
         addChildComponent (*k);
 
-    driveAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxDrive    (generator, slot), driveKnob.slider);
-    toneAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genFxTone     (generator, slot), toneKnob.slider);
-    levelAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxLevel    (generator, slot), levelKnob.slider);
+    driveKnob    .attachTo (processor.apvts, ParamIDs::genFxDrive    (generator, slot));
+    toneKnob     .attachTo (processor.apvts, ParamIDs::genFxTone     (generator, slot));
+    levelKnob    .attachTo (processor.apvts, ParamIDs::genFxLevel    (generator, slot));
     distTypeAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genFxDistType (generator, slot), distTypeBox);
-    threshAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFxThresh   (generator, slot), threshKnob.slider);
-    ratioAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRatio    (generator, slot), ratioKnob.slider);
-    attackKnobAtt= std::make_unique<SA> (processor.apvts, ParamIDs::genFxAttack   (generator, slot), attackKnob.slider);
-    releaseAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRelease  (generator, slot), releaseKnob.slider);
-    makeupAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFxMakeup   (generator, slot), makeupKnob.slider);
-    roomAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genFxRoom     (generator, slot), roomKnob.slider);
-    dampingAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genFxDamping  (generator, slot), dampingKnob.slider);
-    wetAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genFxWet      (generator, slot), wetKnob.slider);
-    widthAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genFxWidth    (generator, slot), widthKnob.slider);
+    threshKnob   .attachTo (processor.apvts, ParamIDs::genFxThresh   (generator, slot));
+    ratioKnob    .attachTo (processor.apvts, ParamIDs::genFxRatio    (generator, slot));
+    attackKnob   .attachTo (processor.apvts, ParamIDs::genFxAttack   (generator, slot));
+    releaseKnob  .attachTo (processor.apvts, ParamIDs::genFxRelease  (generator, slot));
+    makeupKnob   .attachTo (processor.apvts, ParamIDs::genFxMakeup   (generator, slot));
+    roomKnob     .attachTo (processor.apvts, ParamIDs::genFxRoom     (generator, slot));
+    dampingKnob  .attachTo (processor.apvts, ParamIDs::genFxDamping  (generator, slot));
+    wetKnob      .attachTo (processor.apvts, ParamIDs::genFxWet      (generator, slot));
+    widthKnob    .attachTo (processor.apvts, ParamIDs::genFxWidth    (generator, slot));
 
     showForType (processor.generators[(size_t) generator].fxTypes[(size_t) slot]);
 }
@@ -325,10 +336,9 @@ void GeneratorFxCard::resized()
 GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
     : processor (p), generator (generatorIdx)
 {
-    sectionLabel.setText ("MIDI", juce::dontSendNotification);
-    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
-    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f).withStyle ("Bold")));
-    addAndMakeVisible (sectionLabel);
+    modEnableBtn.setClickingTogglesState (true);
+    addAndMakeVisible (modEnableBtn);
+    modEnableBtn.onClick = [this] { updateEnablement(); };
 
     for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addAndMakeVisible (*k);
 
@@ -347,13 +357,26 @@ GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
     keyScaleBox.setRepaintsOnMouseActivity (true);
     addAndMakeVisible (keyScaleBox);
 
-    transposeAtt = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiTranspose (generator), transposeKnob.slider);
-    octaveAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiOctave    (generator), octaveKnob.slider);
-    arpRateAtt   = std::make_unique<SA> (processor.apvts, ParamIDs::genMidiArpRate   (generator), arpRateKnob.slider);
+    transposeKnob.attachTo (processor.apvts, ParamIDs::genMidiTranspose (generator));
+    octaveKnob   .attachTo (processor.apvts, ParamIDs::genMidiOctave    (generator));
+    arpRateKnob  .attachTo (processor.apvts, ParamIDs::genMidiArpRate   (generator));
     keyRootAtt   = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyRoot   (generator), keyRootBox);
     keyScaleAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyScale  (generator), keyScaleBox);
     keyEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiKeyEnabled (generator), keyBtn);
     arpEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiArpEnabled (generator), arpBtn);
+    modEnableAtt = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiModEnabled (generator), modEnableBtn);
+
+    updateEnablement();
+}
+
+void GeneratorMidiRow::updateEnablement()
+{
+    const bool on = modEnableBtn.getToggleState();
+    for (auto* c : { (juce::Component*) &transposeKnob, (juce::Component*) &octaveKnob,
+                     (juce::Component*) &keyBtn, (juce::Component*) &keyRootBox,
+                     (juce::Component*) &keyScaleBox, (juce::Component*) &arpBtn,
+                     (juce::Component*) &arpRateKnob })
+        c->setEnabled (on);
 }
 
 void GeneratorMidiRow::paint (juce::Graphics& g)
@@ -365,8 +388,9 @@ void GeneratorMidiRow::paint (juce::Graphics& g)
 void GeneratorMidiRow::resized()
 {
     auto a = getLocalBounds().reduced (6, 3);
-    sectionLabel.setBounds (a.removeFromLeft (34));
+    modEnableBtn.setBounds (a.removeFromLeft (52).reduced (2, 14));
 
+    a.removeFromLeft (4);
     transposeKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
     octaveKnob   .setBounds (a.removeFromLeft (72).reduced (2, 1));
 
@@ -381,19 +405,19 @@ void GeneratorMidiRow::resized()
 }
 
 //==============================================================================
-// GeneratorFilterRow
+// FilterControlsBlock
 //==============================================================================
-GeneratorFilterRow::GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot)
-    : processor (p), generator (generatorIdx), slot (filterSlot),
-      typeSelector (p.apvts, ParamIDs::genFltType (generatorIdx, filterSlot)),
-      responseView (p.apvts, ParamIDs::genFltType (generatorIdx, filterSlot),
-                    ParamIDs::genFltCut (generatorIdx, filterSlot), ParamIDs::genFltRes (generatorIdx, filterSlot))
+FilterControlsBlock::FilterControlsBlock (juce::AudioProcessorValueTreeState& apvts, const juce::String& name,
+                                           const juce::String& typeParamID,
+                                           const juce::String& cutoffParamID,
+                                           const juce::String& resParamID)
+    : typeSelector (apvts, typeParamID),
+      responseView (apvts, typeParamID, cutoffParamID, resParamID)
 {
-    nameLabel.setText ("Filter " + juce::String (slot + 1), juce::dontSendNotification);
+    nameLabel.setText (name, juce::dontSendNotification);
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addAndMakeVisible (nameLabel);
 
-    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
     addAndMakeVisible (removeBtn);
     removeBtn.onClick = [this] { if (onRemove) onRemove(); };
 
@@ -402,11 +426,37 @@ GeneratorFilterRow::GeneratorFilterRow (ViolentAudioProcessor& p, int generatorI
     for (auto* k : { &cutoffKnob, &resKnob }) addAndMakeVisible (*k);
     addAndMakeVisible (responseView);
 
-    cutoffAtt = std::make_unique<SA> (processor.apvts, ParamIDs::genFltCut  (generator, slot), cutoffKnob.slider);
-    resAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::genFltRes  (generator, slot), resKnob.slider);
+    cutoffKnob.attachTo (apvts, cutoffParamID);
+    resKnob   .attachTo (apvts, resParamID);
 }
 
-GeneratorFilterRow::~GeneratorFilterRow() {}
+void FilterControlsBlock::resized()
+{
+    auto a = getLocalBounds().reduced (4, 3);
+    auto top = a.removeFromTop (40);
+    removeBtn   .setBounds (top.removeFromLeft  (28).withSizeKeepingCentre (20, 20));
+    nameLabel   .setBounds (top.removeFromLeft  (60));
+    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
+    const int kw = top.getWidth() / 2;
+    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
+    resKnob   .setBounds (top.reduced (3, 2));
+
+    a.removeFromTop (2);
+    responseView.setBounds (a);
+}
+
+//==============================================================================
+// GeneratorFilterRow
+//==============================================================================
+GeneratorFilterRow::GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot)
+    : block (p.apvts, "Filter " + juce::String (filterSlot + 1),
+             ParamIDs::genFltType (generatorIdx, filterSlot),
+             ParamIDs::genFltCut  (generatorIdx, filterSlot),
+             ParamIDs::genFltRes  (generatorIdx, filterSlot))
+{
+    addAndMakeVisible (block);
+    block.onRemove = [this] { if (onRemove) onRemove(); };
+}
 
 void GeneratorFilterRow::paint (juce::Graphics& g)
 {
@@ -416,17 +466,7 @@ void GeneratorFilterRow::paint (juce::Graphics& g)
 
 void GeneratorFilterRow::resized()
 {
-    auto a = getLocalBounds().reduced (4, 3);
-    auto top = a.removeFromTop (40);
-    removeBtn   .setBounds (top.removeFromLeft  (24));
-    nameLabel   .setBounds (top.removeFromLeft  (60));
-    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
-    const int kw = top.getWidth() / 2;
-    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
-    resKnob   .setBounds (top.reduced (3, 2));
-
-    a.removeFromTop (2);
-    responseView.setBounds (a);
+    block.setBounds (getLocalBounds());
 }
 
 //==============================================================================
@@ -482,22 +522,22 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
                      &levelKnob, &generatorPan })
         addAndMakeVisible (*k);
 
-    gainAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcGain      (generator), gainKnob.slider);
-    octAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcOct       (generator), octKnob.slider);
-    semiAtt       = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcSemi      (generator), semiKnob.slider);
-    detAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcDet       (generator), detKnob.slider);
-    phaseAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPhase     (generator), phaseKnob.slider);
-    pwAtt         = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPW        (generator), pwKnob.slider);
-    panSrcAtt     = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcPan       (generator), panKnob.slider);
-    velAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcVel       (generator), velKnob.slider);
-    uniAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcUni       (generator), uniKnob.slider);
-    uniSpreadAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcUniSpread (generator), uniSpreadKnob.slider);
-    attAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcAtt       (generator), attKnob.slider);
-    decAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcDec       (generator), decKnob.slider);
-    susAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcSus       (generator), susKnob.slider);
-    relAtt        = std::make_unique<SA> (processor.apvts, ParamIDs::genSrcRel       (generator), relKnob.slider);
-    levelAtt      = std::make_unique<SA> (processor.apvts, ParamIDs::generatorLevel    (generator), levelKnob.slider);
-    generatorPanAtt  = std::make_unique<SA> (processor.apvts, ParamIDs::generatorPan      (generator), generatorPan.slider);
+    gainKnob      .attachTo (processor.apvts, ParamIDs::genSrcGain      (generator));
+    octKnob       .attachTo (processor.apvts, ParamIDs::genSrcOct       (generator));
+    semiKnob      .attachTo (processor.apvts, ParamIDs::genSrcSemi      (generator));
+    detKnob       .attachTo (processor.apvts, ParamIDs::genSrcDet       (generator));
+    phaseKnob     .attachTo (processor.apvts, ParamIDs::genSrcPhase     (generator));
+    pwKnob        .attachTo (processor.apvts, ParamIDs::genSrcPW        (generator));
+    panKnob       .attachTo (processor.apvts, ParamIDs::genSrcPan       (generator));
+    velKnob       .attachTo (processor.apvts, ParamIDs::genSrcVel       (generator));
+    uniKnob       .attachTo (processor.apvts, ParamIDs::genSrcUni       (generator));
+    uniSpreadKnob .attachTo (processor.apvts, ParamIDs::genSrcUniSpread (generator));
+    attKnob       .attachTo (processor.apvts, ParamIDs::genSrcAtt       (generator));
+    decKnob       .attachTo (processor.apvts, ParamIDs::genSrcDec       (generator));
+    susKnob       .attachTo (processor.apvts, ParamIDs::genSrcSus       (generator));
+    relKnob       .attachTo (processor.apvts, ParamIDs::genSrcRel       (generator));
+    levelKnob     .attachTo (processor.apvts, ParamIDs::generatorLevel  (generator));
+    generatorPan  .attachTo (processor.apvts, ParamIDs::generatorPan    (generator));
 
     // Filter chain
     const auto& gen = processor.generators[(size_t) generator];
@@ -666,7 +706,7 @@ void GeneratorCard::resized()
     // Header
     auto hdr = a.removeFromTop (HEADER_H);
     enableBtn.setBounds (hdr.removeFromRight (40).reduced (2, 4));
-    removeBtn.setBounds (hdr.removeFromLeft (28));
+    removeBtn.setBounds (hdr.removeFromLeft (28).withSizeKeepingCentre (20, 20));
     nameLabel.setBounds (hdr.removeFromLeft (70));
     synthModeBtn.setBounds   (hdr.removeFromLeft (55).reduced (2, 4));
     samplerModeBtn.setBounds (hdr.removeFromLeft (65).reduced (2, 4));
@@ -835,25 +875,13 @@ void GeneratorPanel::resized()
 //==============================================================================
 MasterFilterRow::MasterFilterRow (ViolentAudioProcessor& p, int filterSlot)
     : processor (p), slot (filterSlot),
-      typeSelector (p.apvts, ParamIDs::masterFltType (filterSlot)),
-      responseView (p.apvts, ParamIDs::masterFltType (filterSlot),
-                    ParamIDs::masterFltCut (filterSlot), ParamIDs::masterFltRes (filterSlot))
+      block (p.apvts, "Filter " + juce::String (filterSlot + 1),
+             ParamIDs::masterFltType (filterSlot),
+             ParamIDs::masterFltCut  (filterSlot),
+             ParamIDs::masterFltRes  (filterSlot))
 {
-    nameLabel.setText ("Filter " + juce::String (slot + 1), juce::dontSendNotification);
-    nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
-    addAndMakeVisible (nameLabel);
-
-    removeBtn.setColour (juce::TextButton::textColourOffId, ViolentColours::red);
-    addAndMakeVisible (removeBtn);
-    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
-
-    addAndMakeVisible (typeSelector);
-
-    for (auto* k : { &cutoffKnob, &resKnob }) addAndMakeVisible (*k);
-    addAndMakeVisible (responseView);
-
-    cutoffAtt = std::make_unique<SA> (processor.apvts, ParamIDs::masterFltCut  (slot), cutoffKnob.slider);
-    resAtt    = std::make_unique<SA> (processor.apvts, ParamIDs::masterFltRes  (slot), resKnob.slider);
+    addAndMakeVisible (block);
+    block.onRemove = [this] { if (onRemove) onRemove(); };
 
     routingLabel.setText ("Applies to:", juce::dontSendNotification);
     routingLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
@@ -875,8 +903,6 @@ MasterFilterRow::MasterFilterRow (ViolentAudioProcessor& p, int filterSlot)
     }
 }
 
-MasterFilterRow::~MasterFilterRow() {}
-
 void MasterFilterRow::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
@@ -885,21 +911,10 @@ void MasterFilterRow::paint (juce::Graphics& g)
 
 void MasterFilterRow::resized()
 {
-    auto a = getLocalBounds().reduced (4, 3);
+    auto a = getLocalBounds();
 
-    auto routingRow = a.removeFromBottom (28);
-    a.removeFromBottom (2);
-
-    auto top = a.removeFromTop (40);
-    removeBtn   .setBounds (top.removeFromLeft  (24));
-    nameLabel   .setBounds (top.removeFromLeft  (60));
-    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
-    const int kw = top.getWidth() / 2;
-    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
-    resKnob   .setBounds (top.reduced (3, 2));
-
-    a.removeFromTop (2);
-    responseView.setBounds (a);
+    auto routingRow = a.removeFromBottom (30).reduced (4, 2);
+    block.setBounds (a);
 
     routingLabel.setBounds (routingRow.removeFromLeft (70));
     for (auto& btn : routingBtns)

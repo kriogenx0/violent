@@ -240,7 +240,9 @@ private:
 };
 
 //==============================================================================
-/** Rotary knob with name above and value below, always visible. */
+/** Rotary knob with name above and value below, always visible. Owns its own
+    APVTS attachment (bind with attachTo()) so every call site gets consistent
+    wiring instead of each owner hand-rolling a SliderAttachment. */
 class LabelledKnob : public juce::Component
 {
 public:
@@ -252,8 +254,17 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override {}
 
+    // Binds this knob to an APVTS parameter and primes the value label with
+    // the current value. JUCE's SliderAttachment silently skips its initial
+    // change notification when the parameter's default already equals the
+    // slider's pre-attachment value (e.g. 0), which otherwise leaves the
+    // label blank until the user first drags the knob — so the label is set
+    // explicitly here rather than relying on that notification.
+    void attachTo (juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID);
+
 private:
     juce::Colour knobColour;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
 
 //==============================================================================
@@ -309,12 +320,8 @@ private:
     LabelledKnob wetKnob     { "Wet",     ViolentColours::accent };
     LabelledKnob widthKnob   { "Width",   ViolentColours::green  };
 
-    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SA> driveAtt, toneAtt, levelAtt;
     std::unique_ptr<CA> distTypeAtt;
-    std::unique_ptr<SA> threshAtt, ratioAtt, attackKnobAtt, releaseAtt, makeupAtt;
-    std::unique_ptr<SA> roomAtt, dampingAtt, wetAtt, widthAtt;
 
     void setAllInvisible();
     void layoutKnobs (std::initializer_list<LabelledKnob*>, juce::Rectangle<int>);
@@ -339,7 +346,11 @@ private:
     ViolentAudioProcessor& processor;
     int generator;
 
-    juce::Label      sectionLabel;
+    // The MIDI modifier stage is optional per generator — this toggle enables
+    // or bypasses the whole stage (transpose/octave/key-quantize/arp), not
+    // just one sub-feature, so it replaces what used to be a static "MIDI"
+    // label.
+    juce::TextButton modEnableBtn { "MIDI" };
     LabelledKnob     transposeKnob { "Transpose", ViolentColours::teal   };
     LabelledKnob     octaveKnob    { "Octave",    ViolentColours::blue   };
     juce::TextButton keyBtn        { "Key" };
@@ -348,14 +359,44 @@ private:
     juce::TextButton arpBtn        { "Arp" };
     LabelledKnob     arpRateKnob  { "Arp Rate", ViolentColours::yellow };
 
-    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SA> transposeAtt, octaveAtt, arpRateAtt;
     std::unique_ptr<CA> keyRootAtt, keyScaleAtt;
-    std::unique_ptr<BA> keyEnAtt, arpEnAtt;
+    std::unique_ptr<BA> modEnableAtt, keyEnAtt, arpEnAtt;
+
+    void updateEnablement();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorMidiRow)
+};
+
+//==============================================================================
+/** The controls shared by every filter row: remove button, name, type
+    selector, cutoff/resonance knobs, and a live frequency-response view.
+    Used by both GeneratorFilterRow (per-generator filters) and
+    MasterFilterRow (master chain, which adds its own routing row below). */
+class FilterControlsBlock : public juce::Component
+{
+public:
+    static constexpr int HEIGHT = 108;
+
+    FilterControlsBlock (juce::AudioProcessorValueTreeState& apvts, const juce::String& name,
+                          const juce::String& typeParamID,
+                          const juce::String& cutoffParamID,
+                          const juce::String& resParamID);
+
+    void resized() override;
+
+    std::function<void()> onRemove;
+
+private:
+    TrashButton      removeBtn;
+    juce::Label      nameLabel;
+    FilterTypeSelector typeSelector;
+    LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
+    LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
+    FilterResponseView responseView;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilterControlsBlock)
 };
 
 //==============================================================================
@@ -366,7 +407,6 @@ public:
     static constexpr int ROW_H = 112;
 
     GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot);
-    ~GeneratorFilterRow() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -374,19 +414,7 @@ public:
     std::function<void()> onRemove;
 
 private:
-    ViolentAudioProcessor& processor;
-    int generator, slot;
-
-    juce::TextButton removeBtn { "X" };
-    juce::Label      nameLabel;
-    FilterTypeSelector typeSelector;
-    LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
-    LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
-    FilterResponseView responseView;
-
-    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SA> cutoffAtt, resAtt;
+    FilterControlsBlock block;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorFilterRow)
 };
@@ -463,15 +491,11 @@ private:
     std::array<std::unique_ptr<GeneratorFxCard>, MAX_GENERATOR_FX> fxCards;
     juce::TextButton addFxBtn { "+ Effect" };
 
-    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     std::unique_ptr<BA> enableAtt;
     std::unique_ptr<CA> srcTypeAtt;
-    std::unique_ptr<SA> gainAtt, octAtt, semiAtt, detAtt, phaseAtt, pwAtt, panSrcAtt,
-                        velAtt, uniAtt, uniSpreadAtt, attAtt, decAtt, susAtt, relAtt;
-    std::unique_ptr<SA> levelAtt, generatorPanAtt;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
@@ -529,7 +553,6 @@ public:
     static constexpr int ROW_H = 136;
 
     MasterFilterRow (ViolentAudioProcessor& p, int filterSlot);
-    ~MasterFilterRow() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -540,18 +563,10 @@ private:
     ViolentAudioProcessor& processor;
     int slot;
 
-    juce::TextButton removeBtn { "X" };
-    juce::Label      nameLabel;
-    FilterTypeSelector typeSelector;
-    LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
-    LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
-    FilterResponseView responseView;
+    FilterControlsBlock block;
 
     juce::Label routingLabel;
     std::array<juce::TextButton, MAX_GENERATORS> routingBtns;
-
-    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<SA> cutoffAtt, resAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MasterFilterRow)
 };
