@@ -2,9 +2,10 @@
 #include <JuceHeader.h>
 #include "SynthEngine.h"
 #include "FxChain.h"
-#include "StreamChain.h"
+#include "GeneratorChain.h"
 
 static constexpr int NUM_EQ_BANDS = 10;
+static constexpr int MAX_MASTER_FILTERS = 4;
 
 //==============================================================================
 namespace ParamIDs
@@ -39,6 +40,11 @@ namespace ParamIDs
     static constexpr auto EQ_BAND_7 = "eq_band_7";
     static constexpr auto EQ_BAND_8 = "eq_band_8";
     static constexpr auto EQ_BAND_9 = "eq_band_9";
+
+    // ---------- Master filters (applied last, after all generators) ----------
+    inline juce::String masterFltType (int f) { return "mflt_" + juce::String (f) + "_type"; }
+    inline juce::String masterFltCut  (int f) { return "mflt_" + juce::String (f) + "_cut"; }
+    inline juce::String masterFltRes  (int f) { return "mflt_" + juce::String (f) + "_res"; }
 }
 
 //==============================================================================
@@ -78,26 +84,64 @@ public:
 
     void parameterChanged (const juce::String& parameterID, float newValue) override;
 
+    // -----------------------------------------------------------------------
+    // Presets
+    // -----------------------------------------------------------------------
+    std::unique_ptr<juce::XmlElement> createStateXml();
+    void restoreStateFromXml (const juce::XmlElement& xml);
+
+    static juce::File getPresetsDirectory();
+    juce::StringArray getPresetNames() const;
+    bool savePreset (const juce::String& name);
+    bool loadPreset (const juce::String& name);
+
+    juce::String currentPresetName;
+
     juce::AudioProcessorValueTreeState apvts;
 
     // -----------------------------------------------------------------------
-    // Stream state — owned here, written by UI, read by audio thread
+    // Generator state — owned here, written by UI, read by audio thread
     // -----------------------------------------------------------------------
-    int numActiveStreams = 1;
+    int numActiveGenerators = 1;
 
-    struct StreamState
+    struct GeneratorState
     {
         bool  enabled      = true;
         int   numFilters   = 0;
         int   numFx        = 0;
-        std::array<FxType, MAX_STREAM_FX> fxTypes {};
+        std::array<FxType, MAX_GENERATOR_FX> fxTypes {};
     };
-    std::array<StreamState, MAX_STREAMS> streams;
+    std::array<GeneratorState, MAX_GENERATORS> generators;
+
+    // -----------------------------------------------------------------------
+    // Master filters — applied last, after every generator's own filters/FX.
+    // Each one sums a chosen subset of generators, filters that sum, and
+    // adds it to the master bus; generators not routed to any master filter
+    // are mixed straight through, unfiltered.
+    // -----------------------------------------------------------------------
+    struct MasterFilterState
+    {
+        bool enabled = true;
+        std::array<bool, MAX_GENERATORS> routing {};
+    };
+    int numMasterFilters = 0;
+    std::array<MasterFilterState, MAX_MASTER_FILTERS> masterFilters;
 
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
+    std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
 
-    // --- Sample modules (kept for future sample-player streams) ---
+    // --- Live waveform (raw source output, before filters/FX, for the UI scope) ---
+    static constexpr int WAVEFORM_SAMPLES = 256;
+    std::array<std::array<float, WAVEFORM_SAMPLES>, MAX_GENERATORS> waveformSnapshot {};
+
+    // --- MIDI preview (plays a demo pattern so the synth can be heard without a keyboard) ---
+    enum class PreviewPattern { Arpeggios = 0, LowNotes, LongSingleNotes, Chords };
+    std::atomic<bool> previewActive { false };
+    std::atomic<int>  previewPattern { (int) PreviewPattern::Arpeggios };
+    void setPreviewPattern (int pattern);
+
+    // --- Sample modules (kept for future sample-player generators) ---
     struct SampleModule
     {
         juce::AudioBuffer<float> buffer;
@@ -124,7 +168,7 @@ private:
         juce::dsp::IIR::Coefficients<float>>;
 
     // -----------------------------------------------------------------------
-    // DSP state — one copy per stream
+    // DSP state — one copy per generator
     // -----------------------------------------------------------------------
     struct OscSlot
     {
@@ -142,7 +186,7 @@ private:
         float cutoff = 8000.0f, res = 0.707f;
     };
 
-    // Per-FX-slot DSP objects (one instance per active FX slot in a stream)
+    // Per-FX-slot DSP objects (one instance per active FX slot in a generator)
     struct FxSlotDSP
     {
         juce::dsp::Compressor<float>  compressor;
@@ -165,15 +209,15 @@ private:
         }
     };
 
-    struct StreamDSP
+    struct GeneratorDSP
     {
         OscSlot osc;
-        std::array<FltSlot,  MAX_STREAM_FILTERS> filters {};
+        std::array<FltSlot,  MAX_GENERATOR_FILTERS> filters {};
         float level = 1.0f, pan = 0.0f;
 
-        // Per-stream DSP objects
-        std::array<SVFilter,  MAX_STREAM_FILTERS> svFilters;
-        std::array<FxSlotDSP, MAX_STREAM_FX>      fxDSP;
+        // Per-generator DSP objects
+        std::array<SVFilter,  MAX_GENERATOR_FILTERS> svFilters;
+        std::array<FxSlotDSP, MAX_GENERATOR_FX>      fxDSP;
         juce::AudioBuffer<float>                   scratch;
         bool prepared = false;
 
@@ -186,16 +230,16 @@ private:
         }
     };
 
-    std::array<StreamDSP, MAX_STREAMS> streamDSP;
+    std::array<GeneratorDSP, MAX_GENERATORS> generatorDSP;
 
     // -----------------------------------------------------------------------
-    // Voice pool — tagged by stream
+    // Voice pool — tagged by generator
     // -----------------------------------------------------------------------
-    struct StreamVoice
+    struct GeneratorVoice
     {
         bool  active     = false;
         int   note       = -1;
-        int   streamIdx  = 0;
+        int   generatorIdx  = 0;
         float velocity   = 1.0f;
         float baseFreqHz = 0.0f;
 
@@ -212,23 +256,89 @@ private:
         bool isActive() const noexcept { return adsr.isActive(); }
     };
 
-    static constexpr int STREAM_VOICES = 16;
-    std::array<StreamVoice, STREAM_VOICES> voices;
+    static constexpr int GENERATOR_VOICES = 16;
+    std::array<GeneratorVoice, GENERATOR_VOICES> voices;
 
     // -----------------------------------------------------------------------
     // Internal methods
     // -----------------------------------------------------------------------
-    void loadStreamParams (int s);
+    void loadGeneratorParams (int s);
     void processMidi (const juce::MidiBuffer&);
-    void renderStream (int s, juce::AudioBuffer<float>& master);
-    void applyStreamFilters (StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
-    void applyStreamFx (int s, StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
+    void renderGenerator (int s, juce::AudioBuffer<float>& master);
+    void applyGeneratorFilters (GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
+    void applyGeneratorFx (int s, GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
+    void mixGeneratorsToMaster (juce::AudioBuffer<float>& master);
 
-    int  findFreeVoice  (int streamIdx) const noexcept;
-    int  findVoiceToSteal (int streamIdx) const noexcept;
-    void startVoice (int vi, int note, float velocity, int streamIdx);
+    // Master filters use JUCE's TPT state-variable filter — unconditionally
+    // stable at any cutoff/sample-rate ratio, unlike the naive Chamberlin SVF
+    // used per-generator (which can diverge once cutoff approaches ~0.18x
+    // the sample rate). "Notch" is synthesised as lowpass + highpass.
+    struct MasterFilterDSP
+    {
+        juce::dsp::StateVariableTPTFilter<float> filter, notchHelper;
+
+        void prepare (const juce::dsp::ProcessSpec& spec)
+        {
+            filter.prepare (spec);
+            notchHelper.prepare (spec);
+        }
+
+        void reset()
+        {
+            filter.reset();
+            notchHelper.reset();
+        }
+    };
+    std::array<MasterFilterDSP, MAX_MASTER_FILTERS> masterFilterDSP;
+    juce::AudioBuffer<float> masterFilterScratch;
+
+    int  findFreeVoice  (int generatorIdx) const noexcept;
+    int  findVoiceToSteal (int generatorIdx) const noexcept;
+    void startVoice (int vi, int note, float velocity, int generatorIdx);
     void stopNote   (int note);
+    void stopNoteForGenerator (int generatorIdx, int note);
     void allNotesOff();
+
+public:
+    // -----------------------------------------------------------------------
+    // Per-generator MIDI modifier — transpose/octave/key-quantize are plain
+    // deterministic transforms recomputed on both note-on and note-off; the
+    // arpeggiator is its own tiny sample-accurate step sequencer per
+    // generator, driven from held (already-transformed) notes. Exposed
+    // publicly (rather than just private) since they're pure, const queries
+    // that unit tests exercise directly.
+    int  applyMidiModifier (int generatorIdx, int note) const;
+    bool isArpEnabled (int generatorIdx) const;
+
+private:
+    void renderMidiModifiers (int numSamples);
+
+    struct MidiModifierState
+    {
+        std::vector<int> heldNotes;
+        int  arpStepIndex      = -1;
+        int  arpSamplePos      = 0;
+        int  arpNextEventSample = 0;
+        bool arpNoteIsOn       = false;
+        int  arpCurrentNote    = -1;
+    };
+    std::array<MidiModifierState, MAX_GENERATORS> midiModState;
+
+    // -----------------------------------------------------------------------
+    // MIDI preview sequencer — loops one of a few demo patterns (see
+    // PreviewPattern) so the synth can be heard without a MIDI keyboard.
+    // Each step is a set of notes so chords can fire together.
+    // -----------------------------------------------------------------------
+    void buildPreviewSequence();
+    void renderPreviewMidi (juce::MidiBuffer& midi, int numSamples);
+
+    std::vector<std::vector<int>> previewSequence;
+    int  previewStepIndex      = -1;
+    int  previewSamplePos      = 0;
+    int  previewNextEventSample = 0;
+    bool previewNoteIsOn       = false;
+    int  previewSamplesPerNote = 0;
+    int  previewGateSamples    = 0;
 
     // -----------------------------------------------------------------------
     // Global EQ (master bus)
