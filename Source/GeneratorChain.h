@@ -36,7 +36,9 @@ namespace ParamIDs
     inline juce::String generatorLevel (int s) { return "gen_" + juce::String(s) + "_level"; }
     inline juce::String generatorPan   (int s) { return "gen_" + juce::String(s) + "_pan"; }
 
-    // MIDI modifier — sits before the generator in the signal chain
+    // MIDI modifier — sits before the generator in the signal chain, and is
+    // itself optional (bypassed entirely when genMidiModEnabled is false)
+    inline juce::String genMidiModEnabled (int s) { return "gen_" + juce::String(s) + "_midi_mod_en"; }
     inline juce::String genMidiTranspose  (int s) { return "gen_" + juce::String(s) + "_midi_transpose"; }
     inline juce::String genMidiOctave     (int s) { return "gen_" + juce::String(s) + "_midi_octave"; }
     inline juce::String genMidiKeyEnabled (int s) { return "gen_" + juce::String(s) + "_midi_key_en"; }

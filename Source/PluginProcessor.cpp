@@ -22,7 +22,11 @@ ViolentAudioProcessor::createParameterLayout()
             ParamIDs::generatorPan (s),   sn + "Pan",
             NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
 
-        // MIDI modifier — applied to notes before they reach this generator
+        // MIDI modifier — applied to notes before they reach this generator.
+        // The whole stage is optional and off by default; when disabled,
+        // notes pass through unchanged regardless of the sub-settings below.
+        params.push_back (std::make_unique<AudioParameterBool> (
+            ParamIDs::genMidiModEnabled (s), sn + "MIDI Modifier Enabled", false));
         params.push_back (std::make_unique<AudioParameterInt> (
             ParamIDs::genMidiTranspose (s), sn + "MIDI Transpose", -24, 24, 0));
         params.push_back (std::make_unique<AudioParameterInt> (
@@ -381,6 +385,9 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
 
 int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
 {
+    if (apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (s))->load() <= 0.5f)
+        return note;
+
     const int transpose = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiTranspose (s))->load());
     const int octave    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiOctave (s))->load());
     int result = note + transpose + octave * 12;
@@ -408,6 +415,9 @@ int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
 
 bool ViolentAudioProcessor::isArpEnabled (int s) const
 {
+    if (apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (s))->load() <= 0.5f)
+        return false;
+
     return apvts.getRawParameterValue (ParamIDs::genMidiArpEnabled (s))->load() > 0.5f;
 }
 
