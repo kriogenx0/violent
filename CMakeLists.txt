@@ -35,6 +35,7 @@ juce_add_plugin(Violent
     PRODUCT_NAME            "Violent"
     AU_MAIN_TYPE            kAudioUnitType_MusicDevice
     VST3_CATEGORIES         "Instrument|Synth"
+    ICON_BIG                "${CMAKE_CURRENT_SOURCE_DIR}/Assets/icon.png"
 )
 
 juce_generate_juce_header(Violent)
