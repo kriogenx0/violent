@@ -132,8 +132,18 @@ public:
     std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
 
     // --- Live waveform (raw source output, before filters/FX, for the UI scope) ---
-    static constexpr int WAVEFORM_SAMPLES = 256;
-    std::array<std::array<float, WAVEFORM_SAMPLES>, MAX_GENERATORS> waveformSnapshot {};
+    // Each generator's raw output rolls continuously into a ring buffer sized
+    // for the largest option below; the UI reads back however many of the
+    // most recent samples its own time-window setting calls for, so a single
+    // capture serves every zoom level without the processor knowing which
+    // one is currently selected.
+    static constexpr int NUM_WAVEFORM_WINDOWS = 8;
+    static constexpr std::array<float, NUM_WAVEFORM_WINDOWS> waveformWindowOptionsMs
+        { 5.0f, 10.0f, 25.0f, 50.0f, 100.0f, 250.0f, 500.0f, 1000.0f };
+
+    std::array<std::vector<float>, MAX_GENERATORS> waveformRing;
+    std::array<int, MAX_GENERATORS> waveformRingWritePos {};
+    int waveformRingSize = 0;
 
     // --- MIDI preview (plays a demo pattern so the synth can be heard without a keyboard) ---
     enum class PreviewPattern { Arpeggios = 0, LowNotes, LongSingleNotes, Chords };

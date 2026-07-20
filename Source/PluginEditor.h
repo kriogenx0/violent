@@ -198,14 +198,29 @@ private:
 
 //==============================================================================
 /** Live scope of a generator's raw source waveform (pre-filter/FX), polled
-    from the audio-thread snapshot the processor keeps per generator. */
+    from the audio-thread ring buffer the processor keeps per generator. The
+    small button in the corner cycles how much time the scope displays. */
 class WaveformView : public juce::Component, private juce::Timer
 {
 public:
     WaveformView (ViolentAudioProcessor& p, int generatorIdx)
         : processor (p), generator (generatorIdx)
     {
+        windowBtn.setButtonText (windowLabel());
+        windowBtn.onClick = [this]
+        {
+            windowIndex = (windowIndex + 1) % ViolentAudioProcessor::NUM_WAVEFORM_WINDOWS;
+            windowBtn.setButtonText (windowLabel());
+            repaint();
+        };
+        addAndMakeVisible (windowBtn);
+
         startTimerHz (24);
+    }
+
+    void resized() override
+    {
+        windowBtn.setBounds (getLocalBounds().removeFromRight (38).removeFromTop (14).reduced (1));
     }
 
     void paint (juce::Graphics& g) override
@@ -220,13 +235,28 @@ public:
         g.setColour (ViolentColours::overlay);
         g.drawHorizontalLine ((int) plot.getCentreY(), plot.getX(), plot.getRight());
 
-        const auto& snap = processor.waveformSnapshot[(size_t) generator];
+        if (processor.waveformRingSize <= 0)
+            return;
+
+        const auto& ring = processor.waveformRing[(size_t) generator];
+        const int   ringSize = processor.waveformRingSize;
+        const int   writePos = processor.waveformRingWritePos[(size_t) generator];
+        const float windowMs = ViolentAudioProcessor::waveformWindowOptionsMs[(size_t) windowIndex];
+        const int   n = juce::jlimit (2, ringSize,
+            (int) std::round (windowMs * 0.001 * processor.getSampleRate()));
+
+        // Cap plotted points to roughly 2 per pixel so long windows at high
+        // sample rates don't build paths with tens of thousands of segments.
+        const int step = juce::jmax (1, n / juce::jmax (1, (int) plot.getWidth() * 2));
+
         juce::Path path;
-        for (size_t i = 0; i < snap.size(); ++i)
+        bool first = true;
+        for (int i = 0; i < n; i += step)
         {
-            const float x = plot.getX() + plot.getWidth() * (float) i / (float) (snap.size() - 1);
-            const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, snap[i]) * plot.getHeight() * 0.5f;
-            if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+            const int ringIdx = ((writePos - n + i) % ringSize + ringSize) % ringSize;
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) (n - 1);
+            const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, ring[(size_t) ringIdx]) * plot.getHeight() * 0.5f;
+            if (first) { path.startNewSubPath (x, y); first = false; } else path.lineTo (x, y);
         }
         g.setColour (ViolentColours::accent);
         g.strokePath (path, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved));
@@ -235,8 +265,21 @@ public:
 private:
     void timerCallback() override { repaint(); }
 
+    juce::String windowLabel() const
+    {
+        const float ms = ViolentAudioProcessor::waveformWindowOptionsMs[(size_t) windowIndex];
+        if (ms < 1000.0f)
+            return juce::String ((int) ms) + "ms";
+
+        const float s = ms / 1000.0f;
+        const bool  isWhole = juce::approximatelyEqual (s, std::round (s));
+        return (isWhole ? juce::String ((int) s) : juce::String (s, 1)) + "s";
+    }
+
     ViolentAudioProcessor& processor;
     int generator;
+    int windowIndex = 1; // 10ms by default
+    juce::TextButton windowBtn;
 };
 
 //==============================================================================

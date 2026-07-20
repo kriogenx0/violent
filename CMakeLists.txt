@@ -81,6 +81,7 @@ target_sources(ViolentTests
         Tests/TestMain.cpp
         Tests/PresetTests.cpp
         Tests/MidiModifierTests.cpp
+        Tests/WaveformCaptureTests.cpp
 )
 
 target_include_directories(ViolentTests

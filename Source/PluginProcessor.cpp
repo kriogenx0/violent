@@ -271,6 +271,12 @@ void ViolentAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     for (auto& f : masterFilterDSP) f.prepare (processSpec);
     masterFilterScratch.setSize (2, samplesPerBlock);
 
+    waveformRingSize = juce::jmax (64, (int) std::ceil (
+        sampleRate * waveformWindowOptionsMs.back() / 1000.0));
+    for (auto& ring : waveformRing)
+        ring.assign ((size_t) waveformRingSize, 0.0f);
+    waveformRingWritePos.fill (0);
+
     previewSequence.clear(); // force a rebuild once processSpec.sampleRate is valid
 
     prepared = true;
@@ -762,12 +768,18 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
         if (!v.isActive()) v.active = false;
     }
 
-    // Snapshot the raw source waveform (pre-filter/FX) for the UI scope.
+    // Roll the raw source waveform (pre-filter/FX) into the ring buffer for
+    // the UI scope; see waveformRing's declaration for why this always
+    // writes the full history rather than just whatever window is selected.
+    if (waveformRingSize > 0)
     {
-        auto& snap = waveformSnapshot[(size_t) s];
-        const int n = juce::jmin (WAVEFORM_SAMPLES, numSamples);
-        for (int i = 0; i < n; ++i)
-            snap[(size_t) i] = L[i];
+        auto& ring = waveformRing[(size_t) s];
+        int& pos = waveformRingWritePos[(size_t) s];
+        for (int i = 0; i < numSamples; ++i)
+        {
+            ring[(size_t) pos] = L[i];
+            pos = (pos + 1 == waveformRingSize) ? 0 : pos + 1;
+        }
     }
 
     if (!anyActive)
