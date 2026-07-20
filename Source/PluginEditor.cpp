@@ -27,13 +27,27 @@ ViolentLookAndFeel::ViolentLookAndFeel()
 void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     int x, int y, int width, int height,
     float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
-    juce::Slider&)
+    juce::Slider& slider)
 {
-    const float radius  = static_cast<float> (juce::jmin (width, height)) * 0.5f - 4.0f;
+    // Margin leaves just enough room around the knob body for the hover glow
+    // below to render without being clipped by the slider's own bounds.
+    const float radius  = static_cast<float> (juce::jmin (width, height)) * 0.5f - 3.0f;
     const float centreX = static_cast<float> (x) + static_cast<float> (width)  * 0.5f;
     const float centreY = static_cast<float> (y) + static_cast<float> (height) * 0.5f;
     const float rx = centreX - radius, ry = centreY - radius, rw = radius * 2.0f;
     const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+
+    if (slider.isEnabled() && (slider.isMouseOver (true) || slider.isMouseButtonDown()))
+    {
+        // Subtle glow: a few soft, low-alpha rings just outside the knob body,
+        // drawn before the body itself so only the outer ring shows through.
+        for (int i = 3; i >= 1; --i)
+        {
+            const float glowR = radius + (float) i;
+            g.setColour (ViolentColours::accent.withAlpha (0.045f * (float) (4 - i)));
+            g.fillEllipse (centreX - glowR, centreY - glowR, glowR * 2.0f, glowR * 2.0f);
+        }
+    }
 
     g.setColour (ViolentColours::overlay);
     g.fillEllipse (rx, ry, rw, rw);
@@ -123,8 +137,10 @@ void ViolentLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
     // ComboBox has an internal Label covering most of its area (the text
     // display), so a plain isMouseOver() — which excludes children by
     // default — only ever sees the small uncovered strip near the arrow.
-    // Include children so hover covers the whole control.
-    paintControlShape (g, b, box.isPopupActive(), box.isMouseOver (true));
+    // Include children so hover covers the whole control. Disabled boxes
+    // shouldn't show a hover state at all, same as a disabled text field.
+    const bool hovered = box.isEnabled() && box.isMouseOver (true);
+    paintControlShape (g, b, box.isPopupActive(), hovered);
 
     const float arrowCX = (float) width - 15.0f, arrowCY = (float) height * 0.5f;
     juce::Path arrow;
@@ -162,6 +178,7 @@ LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     slider.setColour (juce::Slider::rotarySliderFillColourId, colour);
+    slider.setRepaintsOnMouseActivity (true);
     addAndMakeVisible (slider);
 
     nameLabel.setText (name, juce::dontSendNotification);
