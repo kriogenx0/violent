@@ -470,16 +470,35 @@ void GeneratorFilterRow::resized()
 }
 
 //==============================================================================
+// Shared routing-arrow drawing — used between every stage of the signal
+// chain (MIDI modifier -> generator -> filters -> effects), whether the two
+// stages are inside the same component or, like the MIDI modifier and its
+// generator, separate sibling components.
+//==============================================================================
+static void drawGeneratorRoutingArrow (juce::Graphics& g, int width, int y)
+{
+    const float cx = (float) width * 0.5f;
+    const float halfLineLen = 60.0f;
+
+    g.setColour (ViolentColours::accent.withAlpha (0.35f));
+    g.drawLine (cx - halfLineLen, (float) y, cx + halfLineLen, (float) y, 1.0f);
+
+    juce::Path arrow;
+    arrow.addTriangle (cx - 5.0f, (float) y - 4.0f, cx + 5.0f, (float) y - 4.0f, cx, (float) y + 4.0f);
+    g.setColour (ViolentColours::accent);
+    g.fillPath (arrow);
+}
+
+//==============================================================================
 // GeneratorCard
 //==============================================================================
 GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
-    : processor (p), generator (generatorIdx), waveformView (p, generatorIdx), midiRow (p, generatorIdx)
+    : processor (p), generator (generatorIdx), waveformView (p, generatorIdx)
 {
     nameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (13.0f).withStyle ("Bold")));
     nameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
     addAndMakeVisible (nameLabel);
     addAndMakeVisible (waveformView);
-    addAndMakeVisible (midiRow);
 
     addAndMakeVisible (removeBtn);
     removeBtn.onClick = [this] { if (onRemove) onRemove(); };
@@ -659,8 +678,8 @@ void GeneratorCard::openFilePicker()
 int GeneratorCard::preferredHeight() const noexcept
 {
     const auto& gen = processor.generators[(size_t) generator];
-    return HEADER_H + GeneratorMidiRow::ROW_H + SOURCE_H
-         + 3 * ARROW_H
+    return HEADER_H + SOURCE_H
+         + 2 * ARROW_H
          + gen.numFilters * (GeneratorFilterRow::ROW_H + 4)
          + (gen.numFilters < MAX_GENERATOR_FILTERS ? 32 : 0)
          + gen.numFx * (GeneratorFxCard::CARD_H + 4)
@@ -680,23 +699,13 @@ void GeneratorCard::paint (juce::Graphics& g)
     g.setColour (ViolentColours::overlay);
     g.drawRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f, 1.0f);
 
-    drawRoutingArrow (g, midiArrowY);
     drawRoutingArrow (g, filterArrowY);
     drawRoutingArrow (g, effectArrowY);
 }
 
 void GeneratorCard::drawRoutingArrow (juce::Graphics& g, int y) const
 {
-    const float cx = (float) getWidth() * 0.5f;
-    const float halfLineLen = 60.0f;
-
-    g.setColour (ViolentColours::accent.withAlpha (0.35f));
-    g.drawLine (cx - halfLineLen, (float) y, cx + halfLineLen, (float) y, 1.0f);
-
-    juce::Path arrow;
-    arrow.addTriangle (cx - 5.0f, (float) y - 4.0f, cx + 5.0f, (float) y - 4.0f, cx, (float) y + 4.0f);
-    g.setColour (ViolentColours::accent);
-    g.fillPath (arrow);
+    drawGeneratorRoutingArrow (g, getWidth(), y);
 }
 
 void GeneratorCard::resized()
@@ -720,10 +729,6 @@ void GeneratorCard::resized()
     waveformView.setBounds (hdr.reduced (6, 4));
 
     a.removeFromTop (4);
-
-    // MIDI modifier — before the generator
-    midiRow.setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
-    midiArrowY = a.removeFromTop (ARROW_H).getCentreY();
 
     // Source knobs row 1
     auto row1 = a.removeFromTop (58);
@@ -794,6 +799,38 @@ void GeneratorCard::resized()
 }
 
 //==============================================================================
+// GeneratorUnit
+//==============================================================================
+GeneratorUnit::GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx)
+    : midiRow (p, generatorIdx), card (p, generatorIdx)
+{
+    addAndMakeVisible (midiRow);
+    addAndMakeVisible (card);
+
+    card.onRemove = [this] { if (onRemove) onRemove(); };
+    card.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
+}
+
+int GeneratorUnit::preferredHeight() const noexcept
+{
+    return GeneratorMidiRow::ROW_H + ARROW_H + card.preferredHeight();
+}
+
+void GeneratorUnit::paint (juce::Graphics& g)
+{
+    drawGeneratorRoutingArrow (g, getWidth(), arrowY);
+}
+
+void GeneratorUnit::resized()
+{
+    auto a = getLocalBounds();
+
+    midiRow.setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
+    arrowY = a.removeFromTop (ARROW_H).getCentreY();
+    card.setBounds (a);
+}
+
+//==============================================================================
 // GeneratorPanel
 //==============================================================================
 GeneratorPanel::GeneratorPanel (ViolentAudioProcessor& p) : processor (p)
@@ -821,12 +858,12 @@ void GeneratorPanel::rebuild (bool forceRecreate)
     {
         if (s < n)
         {
-            if (!cards[(size_t) s] || forceRecreate)
+            if (!units[(size_t) s] || forceRecreate)
             {
-                cards[(size_t) s] = std::make_unique<GeneratorCard> (processor, s);
-                addAndMakeVisible (*cards[(size_t) s]);
-                cards[(size_t) s]->onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
-                cards[(size_t) s]->onRemove = [this, s]
+                units[(size_t) s] = std::make_unique<GeneratorUnit> (processor, s);
+                addAndMakeVisible (*units[(size_t) s]);
+                units[(size_t) s]->onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
+                units[(size_t) s]->onRemove = [this, s]
                 {
                     if (processor.numActiveGenerators <= 1) return;
                     // Shift generator states down
@@ -840,7 +877,7 @@ void GeneratorPanel::rebuild (bool forceRecreate)
         }
         else
         {
-            cards[(size_t) s] = nullptr;
+            units[(size_t) s] = nullptr;
         }
     }
     resized();
@@ -850,7 +887,7 @@ int GeneratorPanel::preferredHeight() const noexcept
 {
     int h = 8;
     for (int s = 0; s < processor.numActiveGenerators; ++s)
-        if (cards[(size_t) s]) h += cards[(size_t) s]->preferredHeight() + 8;
+        if (units[(size_t) s]) h += units[(size_t) s]->preferredHeight() + 8;
     h += 40; // add button
     return h;
 }
@@ -860,9 +897,9 @@ void GeneratorPanel::resized()
     auto a = getLocalBounds().reduced (8, 4);
     for (int s = 0; s < processor.numActiveGenerators; ++s)
     {
-        if (!cards[(size_t) s]) continue;
-        const int h = cards[(size_t) s]->preferredHeight();
-        cards[(size_t) s]->setBounds (a.removeFromTop (h));
+        if (!units[(size_t) s]) continue;
+        const int h = units[(size_t) s]->preferredHeight();
+        units[(size_t) s]->setBounds (a.removeFromTop (h));
         a.removeFromTop (8);
     }
     if (processor.numActiveGenerators < MAX_GENERATORS)

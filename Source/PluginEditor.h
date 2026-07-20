@@ -493,9 +493,6 @@ private:
     juce::ToggleButton enableBtn;
     WaveformView     waveformView;
 
-    // MIDI modifier — before the generator
-    GeneratorMidiRow midiRow;
-
     // Source section
     juce::TextButton synthModeBtn   { "Synth" };
     juce::TextButton samplerModeBtn { "Sampler" };
@@ -545,7 +542,7 @@ private:
 
     // Y-centres (local coords) of the routing arrows drawn between sections,
     // computed in resized() and used by paint().
-    int midiArrowY = 0, filterArrowY = 0, effectArrowY = 0;
+    int filterArrowY = 0, effectArrowY = 0;
     void drawRoutingArrow (juce::Graphics&, int y) const;
 
     // Bounding box of the ADSR envelope, boxed and drawn in paint().
@@ -561,7 +558,35 @@ private:
 };
 
 //==============================================================================
-/** Main panel: vertical list of GeneratorCards. */
+/** One generator's full vertical slot in the rack: its MIDI modifier stage —
+    a visually separate box, since the modifier is optional and sits before
+    the generator in the signal chain rather than being part of it — plus
+    the generator card itself, joined by a routing arrow. */
+class GeneratorUnit : public juce::Component
+{
+public:
+    static constexpr int ARROW_H = 20;
+
+    GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx);
+
+    void resized() override;
+    void paint (juce::Graphics&) override;
+
+    int preferredHeight() const noexcept;
+
+    std::function<void()> onRemove;
+    std::function<void()> onLayoutChanged;
+
+private:
+    GeneratorMidiRow midiRow;
+    GeneratorCard card;
+    int arrowY = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorUnit)
+};
+
+//==============================================================================
+/** Main panel: vertical list of GeneratorUnits. */
 class GeneratorPanel : public juce::Component
 {
 public:
@@ -579,7 +604,7 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    std::array<std::unique_ptr<GeneratorCard>, MAX_GENERATORS> cards;
+    std::array<std::unique_ptr<GeneratorUnit>, MAX_GENERATORS> units;
     juce::TextButton addBtn { "+ Add Generator" };
 
     void rebuild (bool forceRecreate = false);
