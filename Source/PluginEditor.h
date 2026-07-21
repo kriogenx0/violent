@@ -341,7 +341,8 @@ private:
 class GeneratorFxCard : public juce::Component
 {
 public:
-    static constexpr int CARD_H = 100;
+    static constexpr int CARD_H        = 100;
+    static constexpr int FILTER_CARD_H = 150;
 
     GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, int fxSlot);
     ~GeneratorFxCard() override;
@@ -351,6 +352,7 @@ public:
 
     std::function<void()> onRemove;
     void showForType (FxType t);
+    int preferredHeight() const noexcept;
 
 private:
     ViolentAudioProcessor& processor;
@@ -374,6 +376,11 @@ private:
     LabelledKnob dampingKnob { "Damping", ViolentColours::teal   };
     LabelledKnob wetKnob     { "Wet",     ViolentColours::accent };
     LabelledKnob widthKnob   { "Width",   ViolentColours::green  };
+
+    FilterTypeSelector filterTypeSelector;
+    LabelledKnob     filterCutoffKnob { "Cutoff",    ViolentColours::blue   };
+    LabelledKnob     filterResKnob    { "Resonance", ViolentColours::accent };
+    FilterResponseView filterResponseView;
 
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     std::unique_ptr<CA> distTypeAtt;
@@ -426,8 +433,8 @@ private:
 //==============================================================================
 /** The controls shared by every filter row: remove button, name, type
     selector, cutoff/resonance knobs, and a live frequency-response view.
-    Used by both GeneratorFilterRow (per-generator filters) and
-    MasterFilterRow (master chain, which adds its own routing row below). */
+    Used by MasterFilterRow (master chain, which adds its own routing row
+    below); per-generator filters are just another GeneratorFxCard type. */
 class FilterControlsBlock : public juce::Component
 {
 public:
@@ -454,27 +461,8 @@ private:
 };
 
 //==============================================================================
-/** One filter row inside a generator. */
-class GeneratorFilterRow : public juce::Component
-{
-public:
-    static constexpr int ROW_H = 112;
-
-    GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot);
-
-    void resized() override;
-    void paint (juce::Graphics&) override;
-
-    std::function<void()> onRemove;
-
-private:
-    FilterControlsBlock block;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorFilterRow)
-};
-
-//==============================================================================
-/** One complete generator card: source + filters + FX + level/pan. */
+/** One complete generator card: source + FX chain (filters are just another
+    selectable effect type) + level/pan. */
 class GeneratorCard : public juce::Component
 {
 public:
@@ -495,9 +483,8 @@ public:
     int preferredHeight() const noexcept;
 
     // For the nav panel: current source-type label ("Synth"/"Sampler"), and
-    // the filter-row/FX-card components at a given slot (nullptr if empty).
+    // the FX-card component at a given slot (nullptr if empty).
     juce::String getSourceTypeLabel() const { return nameLabel.getText(); }
-    juce::Component* getFilterRow (int i) const { return filterRows[(size_t) i].get(); }
     juce::Component* getFxCard (int i) const { return fxCards[(size_t) i].get(); }
 
 private:
@@ -540,10 +527,6 @@ private:
     LabelledKnob levelKnob { "Level", ViolentColours::accent };
     LabelledKnob generatorPan { "Pan",   ViolentColours::yellow };
 
-    // Filter chain
-    std::array<std::unique_ptr<GeneratorFilterRow>, MAX_GENERATOR_FILTERS> filterRows;
-    juce::TextButton addFilterBtn { "+ Filter" };
-
     // FX chain
     std::array<std::unique_ptr<GeneratorFxCard>, MAX_GENERATOR_FX> fxCards;
     juce::TextButton addFxBtn { "+ Effect" };
@@ -557,18 +540,17 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
 
-    // Y-centres (local coords) of the routing arrows drawn between sections,
-    // computed in resized() and used by paint().
-    int filterArrowY = 0, effectArrowY = 0;
+    // Y-centre (local coords) of the routing arrow drawn between the ADSR
+    // section and the FX chain, computed in resized() and used by paint().
+    int effectArrowY = 0;
     void drawRoutingArrow (juce::Graphics&, int y) const;
 
     // Bounding box of the ADSR envelope, boxed and drawn in paint().
     juce::Rectangle<int> adsrBoxBounds;
 
-    // Construct/wire a filter row or FX card in one place, so every call site
-    // (initial load, "+" button, shift-after-remove) stays consistent —
-    // in particular, so removal actually gets wired up every time.
-    void addFilterRow (int arrayIndex, int paramSlot);
+    // Construct/wire an FX card in one place, so every call site (initial
+    // load, "+" button, shift-after-remove) stays consistent — in
+    // particular, so removal actually gets wired up every time.
     void addFxCard (int arrayIndex, FxType type);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorCard)

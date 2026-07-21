@@ -4,7 +4,6 @@
 
 //==============================================================================
 static constexpr int MAX_GENERATORS        = 8;
-static constexpr int MAX_GENERATOR_FILTERS = 4;
 static constexpr int MAX_GENERATOR_FX      = 8;
 
 // Source types — waveforms + sample playback unified
@@ -66,12 +65,6 @@ namespace ParamIDs
     inline juce::String genSrcSus (int s) { return "gen_" + juce::String(s) + "_src_sus"; }
     inline juce::String genSrcRel (int s) { return "gen_" + juce::String(s) + "_src_rel"; }
 
-    // Filters inside generator s, slot f
-    inline juce::String genFltEn   (int s, int f) { return "gen_" + juce::String(s) + "_flt" + juce::String(f) + "_en"; }
-    inline juce::String genFltType (int s, int f) { return "gen_" + juce::String(s) + "_flt" + juce::String(f) + "_type"; }
-    inline juce::String genFltCut  (int s, int f) { return "gen_" + juce::String(s) + "_flt" + juce::String(f) + "_cut"; }
-    inline juce::String genFltRes  (int s, int f) { return "gen_" + juce::String(s) + "_flt" + juce::String(f) + "_res"; }
-
     // FX inside generator s, slot x
     inline juce::String genFxDrive    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_drive"; }
     inline juce::String genFxTone     (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_tone"; }
@@ -86,4 +79,7 @@ namespace ParamIDs
     inline juce::String genFxDamping  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_damp"; }
     inline juce::String genFxWet      (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_wet"; }
     inline juce::String genFxWidth    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_width"; }
+    inline juce::String genFxFilterType (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_ftype"; }
+    inline juce::String genFxFilterCut  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fcut"; }
+    inline juce::String genFxFilterRes  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fres"; }
 }

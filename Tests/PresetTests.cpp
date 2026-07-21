@@ -35,7 +35,8 @@ public:
         {
             ViolentAudioProcessor writer;
             setChoice (writer, ParamIDs::genSrcType (0), 2); // Square
-            writer.generators[0].numFilters = 2;
+            writer.generators[0].numFx = 1;
+            writer.generators[0].fxTypes[0] = FxType::Filter;
 
             auto xml = writer.createStateXml();
             expect (xml != nullptr);
@@ -44,7 +45,8 @@ public:
             reader.restoreStateFromXml (*xml);
 
             expectEquals (getChoice (reader, ParamIDs::genSrcType (0)), 2);
-            expectEquals (reader.generators[0].numFilters, 2);
+            expectEquals (reader.generators[0].numFx, 1);
+            expect (reader.generators[0].fxTypes[0] == FxType::Filter);
         }
 
         beginTest ("savePreset() writes a file and getPresetNames() lists it");

@@ -98,24 +98,6 @@ ViolentAudioProcessor::createParameterLayout()
             NormalisableRange<float> (0.001f, 8.0f, 0.001f, 0.3f), 0.3f,
             AudioParameterFloatAttributes().withLabel ("s")));
 
-        // Filters
-        for (int f = 0; f < MAX_GENERATOR_FILTERS; ++f)
-        {
-            const String fn = sn + "Filter " + String (f + 1) + " ";
-            params.push_back (std::make_unique<AudioParameterBool> (
-                ParamIDs::genFltEn (s, f), fn + "Enabled", false));
-            params.push_back (std::make_unique<AudioParameterChoice> (
-                ParamIDs::genFltType (s, f), fn + "Type",
-                StringArray { "LP", "HP", "BP", "Notch" }, 0));
-            params.push_back (std::make_unique<AudioParameterFloat> (
-                ParamIDs::genFltCut (s, f), fn + "Cutoff",
-                NormalisableRange<float> (20.0f, 20000.0f, 0.1f, 0.3f), 8000.0f,
-                AudioParameterFloatAttributes().withLabel ("Hz")));
-            params.push_back (std::make_unique<AudioParameterFloat> (
-                ParamIDs::genFltRes (s, f), fn + "Resonance",
-                NormalisableRange<float> (0.1f, 12.0f, 0.01f, 0.5f), 0.707f));
-        }
-
         // FX
         for (int x = 0; x < MAX_GENERATOR_FX; ++x)
         {
@@ -165,6 +147,16 @@ ViolentAudioProcessor::createParameterLayout()
             params.push_back (std::make_unique<AudioParameterFloat> (
                 ParamIDs::genFxWidth    (s, x), xn + "Width",
                 NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
+            params.push_back (std::make_unique<AudioParameterChoice> (
+                ParamIDs::genFxFilterType (s, x), xn + "Filter Type",
+                StringArray { "LP", "HP", "BP", "Notch" }, 0));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::genFxFilterCut (s, x), xn + "Filter Cutoff",
+                NormalisableRange<float> (20.0f, 20000.0f, 0.1f, 0.3f), 8000.0f,
+                AudioParameterFloatAttributes().withLabel ("Hz")));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::genFxFilterRes (s, x), xn + "Filter Resonance",
+                NormalisableRange<float> (0.1f, 12.0f, 0.01f, 0.5f), 0.707f));
         }
     }
 
@@ -325,15 +317,6 @@ void ViolentAudioProcessor::loadGeneratorParams (int s)
     o.dec         = apvts.getRawParameterValue (ParamIDs::genSrcDec (s))->load();
     o.sus         = apvts.getRawParameterValue (ParamIDs::genSrcSus (s))->load();
     o.rel         = apvts.getRawParameterValue (ParamIDs::genSrcRel (s))->load();
-
-    for (int f = 0; f < MAX_GENERATOR_FILTERS; ++f)
-    {
-        auto& flt   = dsp.filters[(size_t) f];
-        flt.en      = apvts.getRawParameterValue (ParamIDs::genFltEn   (s, f))->load() > 0.5f;
-        flt.type    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genFltType (s, f))->load());
-        flt.cutoff  = apvts.getRawParameterValue (ParamIDs::genFltCut  (s, f))->load();
-        flt.res     = apvts.getRawParameterValue (ParamIDs::genFltRes  (s, f))->load();
-    }
 }
 
 //==============================================================================
@@ -788,10 +771,7 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
         return;
     }
 
-    // Generator filters
-    applyGeneratorFilters (dsp, gen, dsp.scratch);
-
-    // Generator FX
+    // Generator FX (filters are just another FX-chain entry)
     applyGeneratorFx (s, dsp, gen, dsp.scratch);
 
     generatorLevelMeter[(size_t) s].store (dsp.scratch.getMagnitude (0, 0, numSamples), std::memory_order_relaxed);
@@ -879,29 +859,6 @@ void ViolentAudioProcessor::mixGeneratorsToMaster (juce::AudioBuffer<float>& mas
     }
 }
 
-void ViolentAudioProcessor::applyGeneratorFilters (GeneratorDSP& dsp, const GeneratorState& gen,
-                                                 juce::AudioBuffer<float>& buf)
-{
-    const int   numSamples = buf.getNumSamples();
-    const float sr         = static_cast<float> (processSpec.sampleRate);
-    const int   numCh      = buf.getNumChannels();
-
-    for (int f = 0; f < gen.numFilters; ++f)
-    {
-        const auto& flt = dsp.filters[(size_t) f];
-        if (!flt.en) continue;
-
-        dsp.svFilters[(size_t) f].setCoefficients (flt.cutoff, flt.res, sr);
-
-        for (int ch = 0; ch < numCh; ++ch)
-        {
-            float* data = buf.getWritePointer (ch);
-            for (int n = 0; n < numSamples; ++n)
-                data[n] = dsp.svFilters[(size_t) f].process (ch, data[n], flt.type);
-        }
-    }
-}
-
 void ViolentAudioProcessor::applyGeneratorFx (int s, GeneratorDSP& dsp, const GeneratorState& gen,
                                             juce::AudioBuffer<float>& buf)
 {
@@ -976,6 +933,42 @@ void ViolentAudioProcessor::applyGeneratorFx (int s, GeneratorDSP& dsp, const Ge
                 p.freezeMode = 0.0f;
                 fxdsp.reverb.setParameters (p);
                 fxdsp.reverb.process (ctx);
+                break;
+            }
+            case FxType::Filter:
+            {
+                const float cutoff = apvts.getRawParameterValue (ParamIDs::genFxFilterCut  (s, x))->load();
+                const float res    = apvts.getRawParameterValue (ParamIDs::genFxFilterRes  (s, x))->load();
+                const int   ftype  = static_cast<int> (
+                                        apvts.getRawParameterValue (ParamIDs::genFxFilterType (s, x))->load());
+
+                using FType = juce::dsp::StateVariableTPTFilterType;
+                const bool isNotch = (ftype == 3);
+
+                fxdsp.filter.setType (isNotch ? FType::lowpass
+                                               : (ftype == 1 ? FType::highpass
+                                                             : (ftype == 2 ? FType::bandpass : FType::lowpass)));
+                fxdsp.filter.setCutoffFrequency (cutoff);
+                fxdsp.filter.setResonance (res);
+
+                if (isNotch)
+                {
+                    fxdsp.filterNotchHelper.setType (FType::highpass);
+                    fxdsp.filterNotchHelper.setCutoffFrequency (cutoff);
+                    fxdsp.filterNotchHelper.setResonance (res);
+                }
+
+                for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                {
+                    float* data = buf.getWritePointer (ch);
+                    for (int n = 0; n < buf.getNumSamples(); ++n)
+                    {
+                        const float x2 = data[n];
+                        float v = fxdsp.filter.processSample (ch, x2);
+                        if (isNotch) v += fxdsp.filterNotchHelper.processSample (ch, x2);
+                        data[n] = v;
+                    }
+                }
                 break;
             }
             default: break;
@@ -1064,7 +1057,6 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
     for (int s = 0; s < MAX_GENERATORS; ++s)
     {
         const auto& gen = generators[(size_t) s];
-        xml->setAttribute ("gen_" + juce::String(s) + "_numFilters", gen.numFilters);
         xml->setAttribute ("gen_" + juce::String(s) + "_numFx",      gen.numFx);
         for (int x = 0; x < MAX_GENERATOR_FX; ++x)
             xml->setAttribute ("gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fxtype",
@@ -1101,8 +1093,6 @@ void ViolentAudioProcessor::restoreStateFromXml (const juce::XmlElement& xml)
     for (int s = 0; s < MAX_GENERATORS; ++s)
     {
         auto& gen    = generators[(size_t) s];
-        gen.numFilters = juce::jlimit (0, MAX_GENERATOR_FILTERS,
-                                      xml.getIntAttribute ("gen_" + juce::String(s) + "_numFilters", 0));
         gen.numFx      = juce::jlimit (0, MAX_GENERATOR_FX,
                                       xml.getIntAttribute ("gen_" + juce::String(s) + "_numFx", 0));
         for (int x = 0; x < MAX_GENERATOR_FX; ++x)

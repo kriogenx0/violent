@@ -314,7 +314,11 @@ void LevelMeter::paint (juce::Graphics& g)
 // GeneratorFxCard
 //==============================================================================
 GeneratorFxCard::GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, int fxSlot)
-    : processor (p), generator (generatorIdx), slot (fxSlot)
+    : processor (p), generator (generatorIdx), slot (fxSlot),
+      filterTypeSelector (p.apvts, ParamIDs::genFxFilterType (generatorIdx, fxSlot)),
+      filterResponseView (p.apvts, ParamIDs::genFxFilterType (generatorIdx, fxSlot),
+                           ParamIDs::genFxFilterCut  (generatorIdx, fxSlot),
+                           ParamIDs::genFxFilterRes  (generatorIdx, fxSlot))
 {
     titleLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     titleLabel.setColour (juce::Label::textColourId, ViolentColours::text);
@@ -331,8 +335,11 @@ GeneratorFxCard::GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, in
 
     for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
                      &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob,
-                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
+                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob,
+                     &filterCutoffKnob, &filterResKnob })
         addChildComponent (*k);
+    addChildComponent (filterTypeSelector);
+    addChildComponent (filterResponseView);
 
     driveKnob    .attachTo (processor.apvts, ParamIDs::genFxDrive    (generator, slot));
     toneKnob     .attachTo (processor.apvts, ParamIDs::genFxTone     (generator, slot));
@@ -347,6 +354,8 @@ GeneratorFxCard::GeneratorFxCard (ViolentAudioProcessor& p, int generatorIdx, in
     dampingKnob  .attachTo (processor.apvts, ParamIDs::genFxDamping  (generator, slot));
     wetKnob      .attachTo (processor.apvts, ParamIDs::genFxWet      (generator, slot));
     widthKnob    .attachTo (processor.apvts, ParamIDs::genFxWidth    (generator, slot));
+    filterCutoffKnob.attachTo (processor.apvts, ParamIDs::genFxFilterCut (generator, slot));
+    filterResKnob   .attachTo (processor.apvts, ParamIDs::genFxFilterRes (generator, slot));
 
     showForType (processor.generators[(size_t) generator].fxTypes[(size_t) slot]);
 }
@@ -357,9 +366,12 @@ void GeneratorFxCard::setAllInvisible()
 {
     for (auto* k : { &driveKnob, &toneKnob, &levelKnob,
                      &threshKnob, &ratioKnob, &attackKnob, &releaseKnob, &makeupKnob,
-                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob })
+                     &roomKnob, &dampingKnob, &wetKnob, &widthKnob,
+                     &filterCutoffKnob, &filterResKnob })
         k->setVisible (false);
     distTypeBox.setVisible (false);
+    filterTypeSelector.setVisible (false);
+    filterResponseView.setVisible (false);
 }
 
 void GeneratorFxCard::showForType (FxType t)
@@ -381,8 +393,18 @@ void GeneratorFxCard::showForType (FxType t)
         case FxType::Reverb:
             roomKnob.setVisible(true); dampingKnob.setVisible(true);
             wetKnob.setVisible(true);  widthKnob.setVisible(true); break;
+        case FxType::Filter:
+            filterTypeSelector.setVisible(true);
+            filterCutoffKnob.setVisible(true); filterResKnob.setVisible(true);
+            filterResponseView.setVisible(true); break;
         default: break;
     }
+}
+
+int GeneratorFxCard::preferredHeight() const noexcept
+{
+    return processor.generators[(size_t) generator].fxTypes[(size_t) slot] == FxType::Filter
+        ? FILTER_CARD_H : CARD_H;
 }
 
 void GeneratorFxCard::layoutKnobs (std::initializer_list<LabelledKnob*> ks, juce::Rectangle<int> a)
@@ -419,6 +441,15 @@ void GeneratorFxCard::resized()
             layoutKnobs ({ &threshKnob, &ratioKnob, &attackKnob, &releaseKnob }, a); break;
         case FxType::Reverb:
             layoutKnobs ({ &roomKnob, &dampingKnob, &wetKnob, &widthKnob }, a); break;
+        case FxType::Filter:
+        {
+            filterTypeSelector.setBounds (a.removeFromTop (24).reduced (2, 2));
+            a.removeFromTop (2);
+            layoutKnobs ({ &filterCutoffKnob, &filterResKnob }, a.removeFromTop (54));
+            a.removeFromTop (2);
+            filterResponseView.setBounds (a);
+            break;
+        }
         default: break;
     }
 }
@@ -531,30 +562,6 @@ void FilterControlsBlock::resized()
 }
 
 //==============================================================================
-// GeneratorFilterRow
-//==============================================================================
-GeneratorFilterRow::GeneratorFilterRow (ViolentAudioProcessor& p, int generatorIdx, int filterSlot)
-    : block (p.apvts, "Filter " + juce::String (filterSlot + 1),
-             ParamIDs::genFltType (generatorIdx, filterSlot),
-             ParamIDs::genFltCut  (generatorIdx, filterSlot),
-             ParamIDs::genFltRes  (generatorIdx, filterSlot))
-{
-    addAndMakeVisible (block);
-    block.onRemove = [this] { if (onRemove) onRemove(); };
-}
-
-void GeneratorFilterRow::paint (juce::Graphics& g)
-{
-    g.setColour (ViolentColours::surface);
-    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
-}
-
-void GeneratorFilterRow::resized()
-{
-    block.setBounds (getLocalBounds());
-}
-
-//==============================================================================
 // Shared routing-arrow drawing — used between every stage of the signal
 // chain (MIDI modifier -> generator -> filters -> effects), whether the two
 // stages are inside the same component or, like the MIDI modifier and its
@@ -643,23 +650,10 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     levelKnob     .attachTo (processor.apvts, ParamIDs::generatorLevel  (generator));
     generatorPan  .attachTo (processor.apvts, ParamIDs::generatorPan    (generator));
 
-    // Filter chain
+    // FX chain (filters are just another selectable effect type)
     const auto& gen = processor.generators[(size_t) generator];
-    for (int f = 0; f < gen.numFilters; ++f)
-        addFilterRow (f, f);
-
     for (int x = 0; x < gen.numFx; ++x)
         addFxCard (x, gen.fxTypes[(size_t) x]);
-
-    addAndMakeVisible (addFilterBtn);
-    addFilterBtn.onClick = [this]
-    {
-        auto& s = processor.generators[(size_t) generator];
-        if (s.numFilters >= MAX_GENERATOR_FILTERS) return;
-        const int f = s.numFilters++;
-        addFilterRow (f, f);
-        if (onLayoutChanged) onLayoutChanged();
-    };
 
     addAndMakeVisible (addFxBtn);
     addFxBtn.onClick = [this]
@@ -672,13 +666,14 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
         menu.addItem (2, "Compressor");
         menu.addItem (3, "Gate");
         menu.addItem (4, "Reverb");
+        menu.addItem (5, "Filter");
 
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (addFxBtn),
             [this] (int result)
             {
                 if (result == 0) return;
                 const FxType types[] = { FxType::Distortion, FxType::Compressor,
-                                         FxType::Gate, FxType::Reverb };
+                                         FxType::Gate, FxType::Reverb, FxType::Filter };
                 auto& s  = processor.generators[(size_t) generator];
                 const int x = s.numFx++;
                 s.fxTypes[(size_t) x] = types[result - 1];
@@ -708,20 +703,6 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
 }
 
 GeneratorCard::~GeneratorCard() {}
-
-void GeneratorCard::addFilterRow (int arrayIndex, int paramSlot)
-{
-    filterRows[(size_t) arrayIndex] = std::make_unique<GeneratorFilterRow> (processor, generator, paramSlot);
-    addAndMakeVisible (*filterRows[(size_t) arrayIndex]);
-    filterRows[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
-    {
-        auto& s = processor.generators[(size_t) generator];
-        for (int j = arrayIndex; j < s.numFilters - 1; ++j)
-            addFilterRow (j, j + 1);
-        filterRows[(size_t) (--s.numFilters)] = nullptr;
-        if (onLayoutChanged) onLayoutChanged();
-    };
-}
 
 void GeneratorCard::addFxCard (int arrayIndex, FxType type)
 {
@@ -764,11 +745,13 @@ void GeneratorCard::openFilePicker()
 int GeneratorCard::preferredHeight() const noexcept
 {
     const auto& gen = processor.generators[(size_t) generator];
+    int fxHeight = 0;
+    for (int x = 0; x < gen.numFx; ++x)
+        fxHeight += (fxCards[(size_t) x] ? fxCards[(size_t) x]->preferredHeight() : GeneratorFxCard::CARD_H) + 4;
+
     return HEADER_H + SOURCE_H
-         + 2 * ARROW_H
-         + gen.numFilters * (GeneratorFilterRow::ROW_H + 4)
-         + (gen.numFilters < MAX_GENERATOR_FILTERS ? 32 : 0)
-         + gen.numFx * (GeneratorFxCard::CARD_H + 4)
+         + ARROW_H
+         + fxHeight
          + (gen.numFx < MAX_GENERATOR_FX ? 32 : 0)
          + FOOTER_H + 8;
 }
@@ -785,7 +768,6 @@ void GeneratorCard::paint (juce::Graphics& g)
     g.setColour (ViolentColours::overlay);
     g.drawRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f, 1.0f);
 
-    drawRoutingArrow (g, filterArrowY);
     drawRoutingArrow (g, effectArrowY);
 }
 
@@ -840,33 +822,15 @@ void GeneratorCard::resized()
     susKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
     relKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
 
-    filterArrowY = a.removeFromTop (ARROW_H).getCentreY();
-
-    // Filters
-    const auto& gen = processor.generators[(size_t) generator];
-    for (int f = 0; f < MAX_GENERATOR_FILTERS; ++f)
-    {
-        if (filterRows[(size_t) f])
-        {
-            filterRows[(size_t) f]->setBounds (a.removeFromTop (GeneratorFilterRow::ROW_H));
-            a.removeFromTop (4);
-        }
-    }
-    if (gen.numFilters < MAX_GENERATOR_FILTERS)
-    {
-        addFilterBtn.setBounds (a.removeFromTop (28).reduced (4, 2));
-        a.removeFromTop (4);
-    }
-    addFilterBtn.setVisible (gen.numFilters < MAX_GENERATOR_FILTERS);
-
     effectArrowY = a.removeFromTop (ARROW_H).getCentreY();
 
-    // FX
+    // FX (filters are just another selectable effect type in this chain)
+    const auto& gen = processor.generators[(size_t) generator];
     for (int x = 0; x < MAX_GENERATOR_FX; ++x)
     {
         if (fxCards[(size_t) x])
         {
-            fxCards[(size_t) x]->setBounds (a.removeFromTop (GeneratorFxCard::CARD_H));
+            fxCards[(size_t) x]->setBounds (a.removeFromTop (fxCards[(size_t) x]->preferredHeight()));
             a.removeFromTop (4);
         }
     }
@@ -1355,10 +1319,8 @@ void NavPanel::refreshFromState()
         addEntry (card.getSourceTypeLabel(), &card);
 
         const auto& gen = processor.generators[(size_t) g];
-        for (int f = 0; f < gen.numFilters; ++f)
-            addEntry ("Filter", card.getFilterRow (f));
         for (int x = 0; x < gen.numFx; ++x)
-            addEntry ("Effect", card.getFxCard (x));
+            addEntry (gen.fxTypes[(size_t) x] == FxType::Filter ? "Filter" : "Effect", card.getFxCard (x));
     }
 
     auto& masterFilterPanel = rack.getMasterFilterPanel();

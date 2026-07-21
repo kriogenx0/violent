@@ -107,7 +107,6 @@ public:
     struct GeneratorState
     {
         bool  enabled      = true;
-        int   numFilters   = 0;
         int   numFx        = 0;
         std::array<FxType, MAX_GENERATOR_FX> fxTypes {};
     };
@@ -189,13 +188,6 @@ private:
         float att = 0.01f, dec = 0.1f, sus = 0.7f, rel = 0.3f;
     };
 
-    struct FltSlot
-    {
-        bool  en = false;
-        int   type = 0;
-        float cutoff = 8000.0f, res = 0.707f;
-    };
-
     // Per-FX-slot DSP objects (one instance per active FX slot in a generator)
     struct FxSlotDSP
     {
@@ -204,6 +196,10 @@ private:
         juce::dsp::NoiseGate<float>   gate;
         juce::dsp::Reverb             reverb;
         StereoFilter                  distToneFilter;
+        // Filter FX type — JUCE's TPT state-variable filter, unconditionally
+        // stable at any cutoff/sample-rate ratio (same as the master filters).
+        // "Notch" is synthesised as lowpass + highpass.
+        juce::dsp::StateVariableTPTFilter<float> filter, filterNotchHelper;
         bool prepared = false;
 
         void prepare (const juce::dsp::ProcessSpec& spec)
@@ -215,6 +211,8 @@ private:
             distToneFilter.prepare (spec);
             *distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
                 spec.sampleRate, 4000.0);
+            filter.prepare (spec);
+            filterNotchHelper.prepare (spec);
             prepared = true;
         }
     };
@@ -222,11 +220,9 @@ private:
     struct GeneratorDSP
     {
         OscSlot osc;
-        std::array<FltSlot,  MAX_GENERATOR_FILTERS> filters {};
         float level = 1.0f, pan = 0.0f;
 
         // Per-generator DSP objects
-        std::array<SVFilter,  MAX_GENERATOR_FILTERS> svFilters;
         std::array<FxSlotDSP, MAX_GENERATOR_FX>      fxDSP;
         juce::AudioBuffer<float>                   scratch;
         bool prepared = false;
@@ -234,7 +230,6 @@ private:
         void prepare (const juce::dsp::ProcessSpec& spec)
         {
             scratch.setSize (2, (int) spec.maximumBlockSize, false, true, true);
-            for (auto& f : svFilters) f.reset();
             for (auto& fx : fxDSP)   fx.prepare (spec);
             prepared = true;
         }
@@ -275,7 +270,6 @@ private:
     void loadGeneratorParams (int s);
     void processMidi (const juce::MidiBuffer&);
     void renderGenerator (int s, juce::AudioBuffer<float>& master);
-    void applyGeneratorFilters (GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
     void applyGeneratorFx (int s, GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
     void mixGeneratorsToMaster (juce::AudioBuffer<float>& master);
 

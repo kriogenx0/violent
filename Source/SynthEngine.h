@@ -101,57 +101,6 @@ struct OscillatorGen
 };
 
 //==============================================================================
-/** Chamberlin two-pole state-variable filter (stereo, 2 channels).
- *  type: 0=LP  1=HP  2=BP  3=Notch */
-struct SVFilter
-{
-    float low[2]  = {};
-    float band[2] = {};
-    float f_coeff = 0.0f, q_coeff = 0.0f;
-
-    void reset() noexcept
-    {
-        for (auto& v : low)  v = 0.0f;
-        for (auto& v : band) v = 0.0f;
-    }
-
-    void setCoefficients (float cutoffHz, float resonance, float sampleRate) noexcept
-    {
-        cutoffHz  = juce::jlimit (20.0f, sampleRate * 0.49f, cutoffHz);
-        f_coeff   = 2.0f * std::sin (juce::MathConstants<float>::pi * cutoffHz / sampleRate);
-        q_coeff   = 1.0f / juce::jmax (0.1f, resonance);
-    }
-
-    float process (int ch, float x, int type) noexcept
-    {
-        low[ch]        += f_coeff * band[ch];
-        const float hi  = x - low[ch] - q_coeff * band[ch];
-        band[ch]        = f_coeff * hi + band[ch];
-
-        // The recursive state above never self-corrects once it picks up a
-        // non-finite or runaway value (e.g. from a transient upstream spike
-        // or marginal coefficients) — without this it would either silence
-        // the filter permanently or blow up without recovering.
-        constexpr float stateLimit = 1000.0f;
-        if (! std::isfinite (low[ch]) || ! std::isfinite (band[ch])
-            || std::abs (low[ch]) > stateLimit || std::abs (band[ch]) > stateLimit)
-        {
-            low[ch]  = 0.0f;
-            band[ch] = 0.0f;
-        }
-
-        switch (type)
-        {
-            case 0:  return low[ch];
-            case 1:  return hi;
-            case 2:  return band[ch];
-            case 3:  return hi + low[ch];
-            default: return low[ch];
-        }
-    }
-};
-
-//==============================================================================
 /** LFO oscillator.
  *  shape: 0=Sine  1=Triangle  2=Saw  3=Square */
 struct LFOGen

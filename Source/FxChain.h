@@ -2,10 +2,10 @@
 #include <JuceHeader.h>
 
 static constexpr int MAX_FX       = 8;
-static constexpr int NUM_FX_TYPES = 7;
+static constexpr int NUM_FX_TYPES = 8;
 
 //==============================================================================
-enum class FxType { None = 0, Distortion, Compressor, Gate, Reverb, Chorus, Delay };
+enum class FxType { None = 0, Distortion, Compressor, Gate, Reverb, Chorus, Delay, Filter };
 
 inline const char* fxTypeName (FxType t)
 {
@@ -16,6 +16,7 @@ inline const char* fxTypeName (FxType t)
         case FxType::Reverb:     return "Reverb";
         case FxType::Chorus:     return "Chorus";
         case FxType::Delay:      return "Delay";
+        case FxType::Filter:     return "Filter";
         case FxType::None:
         default:                 return "None";
     }
