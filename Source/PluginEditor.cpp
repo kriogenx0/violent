@@ -429,9 +429,13 @@ void GeneratorFxCard::resized()
 GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
     : processor (p), generator (generatorIdx)
 {
-    modEnableBtn.setClickingTogglesState (true);
-    addAndMakeVisible (modEnableBtn);
-    modEnableBtn.onClick = [this] { updateEnablement(); };
+    addAndMakeVisible (removeBtn);
+    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
+
+    sectionLabel.setText ("MIDI", juce::dontSendNotification);
+    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f).withStyle ("Bold")));
+    addAndMakeVisible (sectionLabel);
 
     for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addAndMakeVisible (*k);
 
@@ -457,19 +461,6 @@ GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
     keyScaleAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyScale  (generator), keyScaleBox);
     keyEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiKeyEnabled (generator), keyBtn);
     arpEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiArpEnabled (generator), arpBtn);
-    modEnableAtt = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiModEnabled (generator), modEnableBtn);
-
-    updateEnablement();
-}
-
-void GeneratorMidiRow::updateEnablement()
-{
-    const bool on = modEnableBtn.getToggleState();
-    for (auto* c : { (juce::Component*) &transposeKnob, (juce::Component*) &octaveKnob,
-                     (juce::Component*) &keyBtn, (juce::Component*) &keyRootBox,
-                     (juce::Component*) &keyScaleBox, (juce::Component*) &arpBtn,
-                     (juce::Component*) &arpRateKnob })
-        c->setEnabled (on);
 }
 
 void GeneratorMidiRow::paint (juce::Graphics& g)
@@ -481,7 +472,8 @@ void GeneratorMidiRow::paint (juce::Graphics& g)
 void GeneratorMidiRow::resized()
 {
     auto a = getLocalBounds().reduced (6, 3);
-    modEnableBtn.setBounds (a.removeFromLeft (52).reduced (2, 14));
+    removeBtn.setBounds (a.removeFromLeft (28).withSizeKeepingCentre (20, 20));
+    sectionLabel.setBounds (a.removeFromLeft (40));
 
     a.removeFromLeft (4);
     transposeKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
@@ -896,31 +888,79 @@ void GeneratorCard::resized()
 // GeneratorUnit
 //==============================================================================
 GeneratorUnit::GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx)
-    : midiRow (p, generatorIdx), card (p, generatorIdx)
+    : processor (p), generator (generatorIdx), card (p, generatorIdx)
 {
-    addAndMakeVisible (midiRow);
     addAndMakeVisible (card);
-
     card.onRemove = [this] { if (onRemove) onRemove(); };
     card.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
+
+    addAndMakeVisible (addMidiBtn);
+    addMidiBtn.onClick = [this]
+    {
+        if (auto* param = dynamic_cast<juce::AudioParameterBool*> (
+                processor.apvts.getParameter (ParamIDs::genMidiModEnabled (generator))))
+            *param = true;
+        setMidiRowPresent (true);
+        if (onLayoutChanged) onLayoutChanged();
+    };
+
+    const bool present = processor.apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (generator))->load() > 0.5f;
+    setMidiRowPresent (present);
+}
+
+void GeneratorUnit::setMidiRowPresent (bool present)
+{
+    if (present)
+    {
+        if (! midiRow)
+        {
+            midiRow = std::make_unique<GeneratorMidiRow> (processor, generator);
+            addAndMakeVisible (*midiRow);
+            midiRow->onRemove = [this]
+            {
+                if (auto* param = dynamic_cast<juce::AudioParameterBool*> (
+                        processor.apvts.getParameter (ParamIDs::genMidiModEnabled (generator))))
+                    *param = false;
+                setMidiRowPresent (false);
+                if (onLayoutChanged) onLayoutChanged();
+            };
+        }
+    }
+    else
+    {
+        midiRow = nullptr;
+    }
+    addMidiBtn.setVisible (! present);
 }
 
 int GeneratorUnit::preferredHeight() const noexcept
 {
-    return GeneratorMidiRow::ROW_H + ARROW_H + card.preferredHeight();
+    if (midiRow)
+        return GeneratorMidiRow::ROW_H + ARROW_H + card.preferredHeight();
+    return ADD_MIDI_BTN_H + 4 + card.preferredHeight();
 }
 
 void GeneratorUnit::paint (juce::Graphics& g)
 {
-    drawGeneratorRoutingArrow (g, getWidth(), arrowY);
+    if (midiRow)
+        drawGeneratorRoutingArrow (g, getWidth(), arrowY);
 }
 
 void GeneratorUnit::resized()
 {
     auto a = getLocalBounds();
 
-    midiRow.setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
-    arrowY = a.removeFromTop (ARROW_H).getCentreY();
+    if (midiRow)
+    {
+        midiRow->setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
+        arrowY = a.removeFromTop (ARROW_H).getCentreY();
+    }
+    else
+    {
+        addMidiBtn.setBounds (a.removeFromTop (ADD_MIDI_BTN_H).reduced (4, 2));
+        a.removeFromTop (4);
+    }
+
     card.setBounds (a);
 }
 
@@ -1308,7 +1348,8 @@ void NavPanel::refreshFromState()
         auto* unit = generatorPanel.getUnit (g);
         if (unit == nullptr) continue;
 
-        addEntry ("MIDI", &unit->getMidiRowComponent());
+        if (auto* midiRow = unit->getMidiRowComponent())
+            addEntry ("MIDI", midiRow);
 
         auto& card = unit->getCard();
         addEntry (card.getSourceTypeLabel(), &card);

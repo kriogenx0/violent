@@ -397,15 +397,16 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
 
+    // Existing (not being added/removed like filters and effects, since a
+    // generator has at most one) — fired when the trash button is clicked.
+    std::function<void()> onRemove;
+
 private:
     ViolentAudioProcessor& processor;
     int generator;
 
-    // The MIDI modifier stage is optional per generator — this toggle enables
-    // or bypasses the whole stage (transpose/octave/key-quantize/arp), not
-    // just one sub-feature, so it replaces what used to be a static "MIDI"
-    // label.
-    juce::TextButton modEnableBtn { "MIDI" };
+    TrashButton      removeBtn;
+    juce::Label      sectionLabel;
     LabelledKnob     transposeKnob { "Transpose", ViolentColours::teal   };
     LabelledKnob     octaveKnob    { "Octave",    ViolentColours::blue   };
     juce::TextButton keyBtn        { "Key" };
@@ -417,9 +418,7 @@ private:
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::unique_ptr<CA> keyRootAtt, keyScaleAtt;
-    std::unique_ptr<BA> modEnableAtt, keyEnAtt, arpEnAtt;
-
-    void updateEnablement();
+    std::unique_ptr<BA> keyEnAtt, arpEnAtt;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorMidiRow)
 };
@@ -576,14 +575,15 @@ private:
 };
 
 //==============================================================================
-/** One generator's full vertical slot in the rack: its MIDI modifier stage —
-    a visually separate box, since the modifier is optional and sits before
-    the generator in the signal chain rather than being part of it — plus
-    the generator card itself, joined by a routing arrow. */
+/** One generator's full vertical slot in the rack: an optional MIDI modifier
+    stage — added/removed just like a filter or effect, since a generator
+    doesn't have to have one — plus the generator card itself, joined by a
+    routing arrow whenever the modifier is present. */
 class GeneratorUnit : public juce::Component
 {
 public:
     static constexpr int ARROW_H = 20;
+    static constexpr int ADD_MIDI_BTN_H = 28;
 
     GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx);
 
@@ -595,14 +595,20 @@ public:
     std::function<void()> onRemove;
     std::function<void()> onLayoutChanged;
 
-    // For the nav panel.
-    juce::Component& getMidiRowComponent() { return midiRow; }
+    // For the nav panel; midi row is nullptr when not added.
+    juce::Component* getMidiRowComponent() { return midiRow.get(); }
     GeneratorCard& getCard() { return card; }
 
 private:
-    GeneratorMidiRow midiRow;
+    ViolentAudioProcessor& processor;
+    int generator;
+
+    std::unique_ptr<GeneratorMidiRow> midiRow;
+    juce::TextButton addMidiBtn { "+ MIDI Modifier" };
     GeneratorCard card;
     int arrowY = 0;
+
+    void setMidiRowPresent (bool present);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorUnit)
 };
