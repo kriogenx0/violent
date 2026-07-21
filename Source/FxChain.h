@@ -1,7 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 
-static constexpr int MAX_FX       = 8;
+static constexpr int MAX_FX_BUSES = 8;
 static constexpr int NUM_FX_TYPES = 7;
 
 //==============================================================================
@@ -24,17 +24,17 @@ inline const char* fxTypeName (FxType t)
 //==============================================================================
 namespace ParamIDs
 {
-    inline juce::String fxDrive    (int n) { return "fx_" + juce::String (n) + "_drive"; }
-    inline juce::String fxTone     (int n) { return "fx_" + juce::String (n) + "_tone"; }
-    inline juce::String fxLevel    (int n) { return "fx_" + juce::String (n) + "_level"; }
-    inline juce::String fxDistType (int n) { return "fx_" + juce::String (n) + "_dtype"; }
-    inline juce::String fxThresh   (int n) { return "fx_" + juce::String (n) + "_thresh"; }
-    inline juce::String fxRatio    (int n) { return "fx_" + juce::String (n) + "_ratio"; }
-    inline juce::String fxAttack   (int n) { return "fx_" + juce::String (n) + "_attack"; }
-    inline juce::String fxRelease  (int n) { return "fx_" + juce::String (n) + "_release"; }
-    inline juce::String fxMakeup   (int n) { return "fx_" + juce::String (n) + "_makeup"; }
-    inline juce::String fxRoom     (int n) { return "fx_" + juce::String (n) + "_room"; }
-    inline juce::String fxDamping  (int n) { return "fx_" + juce::String (n) + "_damp"; }
-    inline juce::String fxWet      (int n) { return "fx_" + juce::String (n) + "_wet"; }
-    inline juce::String fxWidth    (int n) { return "fx_" + juce::String (n) + "_width"; }
+    inline juce::String busDrive    (int b) { return "bus" + juce::String (b) + "_drive"; }
+    inline juce::String busTone     (int b) { return "bus" + juce::String (b) + "_tone"; }
+    inline juce::String busLevel    (int b) { return "bus" + juce::String (b) + "_level"; }
+    inline juce::String busDistType (int b) { return "bus" + juce::String (b) + "_dtype"; }
+    inline juce::String busThresh   (int b) { return "bus" + juce::String (b) + "_thresh"; }
+    inline juce::String busRatio    (int b) { return "bus" + juce::String (b) + "_ratio"; }
+    inline juce::String busAttack   (int b) { return "bus" + juce::String (b) + "_attack"; }
+    inline juce::String busRelease  (int b) { return "bus" + juce::String (b) + "_release"; }
+    inline juce::String busMakeup   (int b) { return "bus" + juce::String (b) + "_makeup"; }
+    inline juce::String busRoom     (int b) { return "bus" + juce::String (b) + "_room"; }
+    inline juce::String busDamping  (int b) { return "bus" + juce::String (b) + "_damp"; }
+    inline juce::String busWet      (int b) { return "bus" + juce::String (b) + "_wet"; }
+    inline juce::String busWidth    (int b) { return "bus" + juce::String (b) + "_width"; }
 }

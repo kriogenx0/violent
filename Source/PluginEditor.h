@@ -66,14 +66,29 @@ private:
 };
 
 //==============================================================================
-/** One FX card inside a stream's effect chain. */
-class StreamFxCard : public juce::Component
+/** Small icon toggle button for choosing Oscillator vs Sampler source mode. */
+class SourceModeButton : public juce::Button
+{
+public:
+    enum class Icon { Oscillator, Sampler };
+
+    SourceModeButton (const juce::String& name, Icon i) : juce::Button (name), icon (i) {}
+
+    void paintButton (juce::Graphics&, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override;
+
+private:
+    Icon icon;
+};
+
+//==============================================================================
+/** One effect card inside the shared FX rack. */
+class FxBusCard : public juce::Component
 {
 public:
     static constexpr int CARD_H = 100;
 
-    StreamFxCard (ViolentAudioProcessor& p, int streamIdx, int fxSlot);
-    ~StreamFxCard() override;
+    FxBusCard (ViolentAudioProcessor& p, int busIdx);
+    ~FxBusCard() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -83,7 +98,7 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int stream, slot;
+    int bus;
 
     juce::TextButton removeBtn { "X" };
     juce::Label      titleLabel;
@@ -114,18 +129,18 @@ private:
     void setAllInvisible();
     void layoutKnobs (std::initializer_list<LabelledKnob*>, juce::Rectangle<int>);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamFxCard)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxBusCard)
 };
 
 //==============================================================================
-/** One filter row inside a stream. */
-class StreamFilterRow : public juce::Component
+/** One filter row inside a generator. */
+class GeneratorFilterRow : public juce::Component
 {
 public:
     static constexpr int ROW_H = 70;
 
-    StreamFilterRow (ViolentAudioProcessor& p, int streamIdx, int filterSlot);
-    ~StreamFilterRow() override;
+    GeneratorFilterRow (ViolentAudioProcessor& p, int genIdx, int filterSlot);
+    ~GeneratorFilterRow() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -134,7 +149,7 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int stream, slot;
+    int gen, slot;
 
     juce::TextButton removeBtn { "X" };
     juce::Label      nameLabel;
@@ -148,20 +163,21 @@ private:
     std::unique_ptr<CA> typeAtt;
     std::unique_ptr<SA> cutoffAtt, resAtt;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamFilterRow)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorFilterRow)
 };
 
 //==============================================================================
-/** One complete stream card: source + filters + FX + level/pan. */
-class StreamCard : public juce::Component
+/** One complete generator card: source + filters + sends + level/pan. */
+class GeneratorCard : public juce::Component
 {
 public:
     static constexpr int SOURCE_H  = 150;  // source section height
     static constexpr int HEADER_H  = 36;
     static constexpr int FOOTER_H  = 44;
+    static constexpr int SENDS_H   = 58;
 
-    StreamCard (ViolentAudioProcessor& p, int streamIdx);
-    ~StreamCard() override;
+    GeneratorCard (ViolentAudioProcessor& p, int genIdx);
+    ~GeneratorCard() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -169,11 +185,14 @@ public:
     std::function<void()> onRemove;
     std::function<void()> onLayoutChanged;
 
+    /** Rebuilds the send knobs to match the current shared FX bus rack. */
+    void refreshSends();
+
     int preferredHeight() const noexcept;
 
 private:
     ViolentAudioProcessor& processor;
-    int stream;
+    int gen;
 
     // Header
     juce::TextButton removeBtn    { "X" };
@@ -181,10 +200,14 @@ private:
     juce::ToggleButton enableBtn;
 
     // Source section
+    SourceModeButton oscModeBtn     { "Oscillator", SourceModeButton::Icon::Oscillator };
+    SourceModeButton samplerModeBtn { "Sampler",    SourceModeButton::Icon::Sampler    };
     juce::ComboBox   srcTypeBox;
     juce::Label      srcTypeLabel;
     juce::TextButton loadSampleBtn { "Load…" };
     juce::Label      sampleFileLabel;
+
+    void setSourceMode (bool sampler);
 
     LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
     LabelledKnob octKnob     { "Oct",     ViolentColours::text    };
@@ -205,38 +228,63 @@ private:
 
     // Footer: level + pan
     LabelledKnob levelKnob { "Level", ViolentColours::accent };
-    LabelledKnob streamPan { "Pan",   ViolentColours::yellow };
+    LabelledKnob genPanKnob{ "Pan",   ViolentColours::yellow };
 
     // Filter chain
-    std::array<std::unique_ptr<StreamFilterRow>, MAX_STREAM_FILTERS> filterRows;
+    std::array<std::unique_ptr<GeneratorFilterRow>, MAX_GEN_FILTERS> filterRows;
     juce::TextButton addFilterBtn { "+ Filter" };
 
-    // FX chain
-    std::array<std::unique_ptr<StreamFxCard>, MAX_STREAM_FX> fxCards;
-    juce::TextButton addFxBtn { "+ Effect" };
-
+    // Sends to shared FX buses — rebuilt whenever the rack changes
+    std::array<std::unique_ptr<LabelledKnob>, MAX_FX_BUSES> sendKnobs;
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::array<std::unique_ptr<SA>, MAX_FX_BUSES> sendAtts;
 
     std::unique_ptr<BA> enableAtt;
     std::unique_ptr<CA> srcTypeAtt;
     std::unique_ptr<SA> gainAtt, octAtt, semiAtt, detAtt, phaseAtt, pwAtt, panSrcAtt,
                         velAtt, uniAtt, uniSpreadAtt, attAtt, decAtt, susAtt, relAtt;
-    std::unique_ptr<SA> levelAtt, streamPanAtt;
+    std::unique_ptr<SA> levelAtt, genPanAtt;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamCard)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorCard)
 };
 
 //==============================================================================
-/** Main panel: vertical list of StreamCards. */
-class StreamPanel : public juce::Component
+/** Main panel: vertical list of GeneratorCards. */
+class GeneratorPanel : public juce::Component
 {
 public:
-    explicit StreamPanel (ViolentAudioProcessor& p);
+    explicit GeneratorPanel (ViolentAudioProcessor& p);
+    void resized() override;
+    void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
+
+    std::function<void()> onLayoutChanged;
+
+    /** Tells every live card to rebuild its send knobs (call after the FX rack changes). */
+    void refreshAllSends();
+
+    int preferredHeight() const noexcept;
+
+private:
+    ViolentAudioProcessor& processor;
+    std::array<std::unique_ptr<GeneratorCard>, MAX_GENERATORS> cards;
+    juce::TextButton addBtn { "+ Add Generator" };
+
+    void rebuild();
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorPanel)
+};
+
+//==============================================================================
+/** Shared FX rack: vertical list of FxBusCards that generators send into. */
+class FxRackPanel : public juce::Component
+{
+public:
+    explicit FxRackPanel (ViolentAudioProcessor& p);
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
@@ -246,12 +294,13 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    std::array<std::unique_ptr<StreamCard>, MAX_STREAMS> cards;
-    juce::TextButton addBtn { "+ Add Stream" };
+    std::array<std::unique_ptr<FxBusCard>, MAX_FX_BUSES> cards;
+    juce::TextButton addBtn { "+ Add Effect" };
+    juce::Label      titleLabel;
 
     void rebuild();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StreamPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxRackPanel)
 };
 
 //==============================================================================
@@ -268,8 +317,9 @@ private:
     ViolentAudioProcessor& processor;
     ViolentLookAndFeel     laf;
 
-    StreamPanel streamPanel;
-    LevelMeter  meter;
+    GeneratorPanel generatorPanel;
+    FxRackPanel    fxRackPanel;
+    LevelMeter     meter;
 
     int editorHeight() const noexcept;
     void updateHeight();

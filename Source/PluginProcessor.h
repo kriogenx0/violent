@@ -2,7 +2,7 @@
 #include <JuceHeader.h>
 #include "SynthEngine.h"
 #include "FxChain.h"
-#include "StreamChain.h"
+#include "GeneratorChain.h"
 
 static constexpr int NUM_EQ_BANDS = 10;
 
@@ -81,23 +81,27 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
     // -----------------------------------------------------------------------
-    // Stream state — owned here, written by UI, read by audio thread
+    // Generator state — owned here, written by UI, read by audio thread
     // -----------------------------------------------------------------------
-    int numActiveStreams = 1;
+    int numActiveGenerators = 1;
 
-    struct StreamState
+    struct GeneratorState
     {
-        bool  enabled      = true;
-        int   numFilters   = 0;
-        int   numFx        = 0;
-        std::array<FxType, MAX_STREAM_FX> fxTypes {};
+        bool enabled    = true;
+        int  numFilters = 0;
     };
-    std::array<StreamState, MAX_STREAMS> streams;
+    std::array<GeneratorState, MAX_GENERATORS> generators;
+
+    // -----------------------------------------------------------------------
+    // Shared FX bus state — a rack of effects; generators send into these
+    // -----------------------------------------------------------------------
+    int numFxBuses = 0;
+    std::array<FxType, MAX_FX_BUSES> fxBusTypes {};
 
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
 
-    // --- Sample modules (kept for future sample-player streams) ---
+    // --- Sample modules, one per generator (unified osc/sampler source) ---
     struct SampleModule
     {
         juce::AudioBuffer<float> buffer;
@@ -109,7 +113,7 @@ public:
         JUCE_DECLARE_NON_COPYABLE (SampleModule)
     };
 
-    std::array<SampleModule, MAX_SAMPLES> sampleModules;
+    std::array<SampleModule, MAX_GENERATORS> sampleModules;
     juce::AudioFormatManager             formatManager;
 
     void loadSample (int slotIndex, const juce::File& file);
@@ -124,7 +128,7 @@ private:
         juce::dsp::IIR::Coefficients<float>>;
 
     // -----------------------------------------------------------------------
-    // DSP state — one copy per stream
+    // DSP state — one copy per generator
     // -----------------------------------------------------------------------
     struct OscSlot
     {
@@ -142,7 +146,7 @@ private:
         float cutoff = 8000.0f, res = 0.707f;
     };
 
-    // Per-FX-slot DSP objects (one instance per active FX slot in a stream)
+    // Per-FX-slot DSP objects (one instance per active shared FX bus)
     struct FxSlotDSP
     {
         juce::dsp::Compressor<float>  compressor;
@@ -165,37 +169,40 @@ private:
         }
     };
 
-    struct StreamDSP
+    struct GeneratorDSP
     {
         OscSlot osc;
-        std::array<FltSlot,  MAX_STREAM_FILTERS> filters {};
+        std::array<FltSlot, MAX_GEN_FILTERS> filters {};
         float level = 1.0f, pan = 0.0f;
+        std::array<float, MAX_FX_BUSES> sendGain {};
 
-        // Per-stream DSP objects
-        std::array<SVFilter,  MAX_STREAM_FILTERS> svFilters;
-        std::array<FxSlotDSP, MAX_STREAM_FX>      fxDSP;
-        juce::AudioBuffer<float>                   scratch;
+        // Per-generator DSP objects
+        std::array<SVFilter, MAX_GEN_FILTERS> svFilters;
+        juce::AudioBuffer<float>              scratch;
         bool prepared = false;
 
         void prepare (const juce::dsp::ProcessSpec& spec)
         {
             scratch.setSize (2, (int) spec.maximumBlockSize, false, true, true);
             for (auto& f : svFilters) f.reset();
-            for (auto& fx : fxDSP)   fx.prepare (spec);
             prepared = true;
         }
     };
 
-    std::array<StreamDSP, MAX_STREAMS> streamDSP;
+    std::array<GeneratorDSP, MAX_GENERATORS> generatorDSP;
+
+    // Shared FX buses: one DSP instance + one scratch buffer per bus
+    std::array<FxSlotDSP, MAX_FX_BUSES>                fxBusDSP;
+    std::array<juce::AudioBuffer<float>, MAX_FX_BUSES> busBuffers;
 
     // -----------------------------------------------------------------------
-    // Voice pool — tagged by stream
+    // Voice pool — tagged by generator
     // -----------------------------------------------------------------------
-    struct StreamVoice
+    struct GenVoice
     {
         bool  active     = false;
         int   note       = -1;
-        int   streamIdx  = 0;
+        int   genIdx     = 0;
         float velocity   = 1.0f;
         float baseFreqHz = 0.0f;
 
@@ -212,21 +219,21 @@ private:
         bool isActive() const noexcept { return adsr.isActive(); }
     };
 
-    static constexpr int STREAM_VOICES = 16;
-    std::array<StreamVoice, STREAM_VOICES> voices;
+    static constexpr int GEN_VOICES = 16;
+    std::array<GenVoice, GEN_VOICES> voices;
 
     // -----------------------------------------------------------------------
     // Internal methods
     // -----------------------------------------------------------------------
-    void loadStreamParams (int s);
+    void loadGeneratorParams (int g);
     void processMidi (const juce::MidiBuffer&);
-    void renderStream (int s, juce::AudioBuffer<float>& master);
-    void applyStreamFilters (StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
-    void applyStreamFx (int s, StreamDSP& dsp, const StreamState& st, juce::AudioBuffer<float>& buf);
+    void renderGenerator (int g, juce::AudioBuffer<float>& master);
+    void applyGeneratorFilters (GeneratorDSP& dsp, const GeneratorState& st, juce::AudioBuffer<float>& buf);
+    void processFxBuses (juce::AudioBuffer<float>& master, int numSamples);
 
-    int  findFreeVoice  (int streamIdx) const noexcept;
-    int  findVoiceToSteal (int streamIdx) const noexcept;
-    void startVoice (int vi, int note, float velocity, int streamIdx);
+    int  findFreeVoice  (int genIdx) const noexcept;
+    int  findVoiceToSteal (int genIdx) const noexcept;
+    void startVoice (int vi, int note, float velocity, int genIdx);
     void stopNote   (int note);
     void allNotesOff();
 
