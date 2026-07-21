@@ -37,14 +37,16 @@ void ViolentLookAndFeel::drawRotarySlider (juce::Graphics& g,
     const float rx = centreX - radius, ry = centreY - radius, rw = radius * 2.0f;
     const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    if (slider.isEnabled() && (slider.isMouseOver (true) || slider.isMouseButtonDown()))
+    const bool  wantsGlow = slider.isEnabled() && (slider.isMouseOver (true) || slider.isMouseButtonDown());
+    const float glow = animatedHoverAmount (slider, wantsGlow);
+    if (glow > 0.001f)
     {
         // Subtle glow: a few soft, low-alpha rings just outside the knob body,
         // drawn before the body itself so only the outer ring shows through.
         for (int i = 3; i >= 1; --i)
         {
             const float glowR = radius + (float) i;
-            g.setColour (ViolentColours::accent.withAlpha (0.045f * (float) (4 - i)));
+            g.setColour (ViolentColours::accent.withAlpha (0.045f * (float) (4 - i) * glow));
             g.fillEllipse (centreX - glowR, centreY - glowR, glowR * 2.0f, glowR * 2.0f);
         }
     }
@@ -99,15 +101,17 @@ void ViolentLookAndFeel::drawLinearSlider (juce::Graphics& g,
     g.fillRoundedRectangle (centreX - 11.0f, sliderPos - 6.0f, 22.0f, 12.0f, 3.0f);
 }
 
-void ViolentLookAndFeel::paintControlShape (juce::Graphics& g, juce::Rectangle<float> b,
+void ViolentLookAndFeel::paintControlShape (juce::Graphics& g, juce::Component& c, juce::Rectangle<float> b,
                                              bool isOn, bool isHovered)
 {
+    const float hover = animatedHoverAmount (c, isHovered);
+
     g.setColour (isOn ? ViolentColours::accent
-                       : (isHovered ? ViolentColours::overlay : ViolentColours::surface));
+                       : ViolentColours::surface.interpolatedWith (ViolentColours::overlay, hover));
     g.fillRoundedRectangle (b, ViolentColours::cornerRadius);
 
     juce::Colour border = isOn ? ViolentColours::accent.brighter (0.2f) : ViolentColours::overlay;
-    if (isHovered) border = border.brighter (0.35f);
+    border = border.brighter (0.35f * hover);
     g.setColour (border);
     g.drawRoundedRectangle (b, ViolentColours::cornerRadius, 1.0f);
 }
@@ -117,7 +121,7 @@ void ViolentLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
 {
     const bool on = btn.getToggleState();
     const auto b  = btn.getLocalBounds().toFloat().reduced (1.0f);
-    paintControlShape (g, b, on, highlighted);
+    paintControlShape (g, btn, b, on, highlighted);
     g.setColour (on ? ViolentColours::background : ViolentColours::text);
     g.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     g.drawFittedText (btn.getButtonText(), btn.getLocalBounds(), juce::Justification::centred, 1);
@@ -127,7 +131,7 @@ void ViolentLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
                                                 const juce::Colour&, bool highlighted, bool)
 {
     const auto b  = btn.getLocalBounds().toFloat().reduced (1.0f);
-    paintControlShape (g, b, btn.getToggleState(), highlighted);
+    paintControlShape (g, btn, b, btn.getToggleState(), highlighted);
 }
 
 void ViolentLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
@@ -140,7 +144,7 @@ void ViolentLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
     // Include children so hover covers the whole control. Disabled boxes
     // shouldn't show a hover state at all, same as a disabled text field.
     const bool hovered = box.isEnabled() && box.isMouseOver (true);
-    paintControlShape (g, b, box.isPopupActive(), hovered);
+    paintControlShape (g, box, b, box.isPopupActive(), hovered);
 
     const float arrowCX = (float) width - 15.0f, arrowCY = (float) height * 0.5f;
     juce::Path arrow;
@@ -167,6 +171,78 @@ juce::Font ViolentLookAndFeel::getComboBoxFont (juce::ComboBox&)
 juce::Font ViolentLookAndFeel::getPopupMenuFont()
 {
     return juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f));
+}
+
+float ViolentLookAndFeel::animatedHoverAmount (juce::Component& c, bool isHovered)
+{
+    constexpr double durationMs = 100.0;
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const float targetNow = isHovered ? 1.0f : 0.0f;
+
+    auto& props = c.getProperties();
+    const bool hasState = props.contains ("vHoverStart");
+
+    double start  = hasState ? (double) props["vHoverStart"]  : now;
+    float  from   = hasState ? (float) (double) props["vHoverFrom"]   : targetNow;
+    float  target = hasState ? (float) (double) props["vHoverTarget"] : targetNow;
+
+    const double elapsed = juce::jlimit (0.0, durationMs, now - start);
+    const float  t = (float) (elapsed / durationMs);
+    float progress = from + (target - from) * t;
+
+    if (! hasState || ! juce::approximatelyEqual (target, targetNow))
+    {
+        // First time seeing this component, or the hover target just
+        // flipped — (re)start the transition from wherever we are now, so
+        // reversing direction mid-fade stays smooth instead of jumping.
+        start = now;
+        from = progress;
+        target = targetNow;
+        props.set ("vHoverStart", start);
+        props.set ("vHoverFrom", (double) from);
+        props.set ("vHoverTarget", (double) target);
+    }
+
+    if (! juce::approximatelyEqual (progress, target))
+        registerForHoverAnimation (c);
+
+    return progress;
+}
+
+void ViolentLookAndFeel::registerForHoverAnimation (juce::Component& c)
+{
+    for (auto& sp : animatingComponents)
+        if (sp.getComponent() == &c)
+            return;
+
+    animatingComponents.add (juce::Component::SafePointer<juce::Component> (&c));
+    if (! isTimerRunning())
+        startTimerHz (60);
+}
+
+void ViolentLookAndFeel::timerCallback()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+
+    for (int i = animatingComponents.size(); --i >= 0;)
+    {
+        auto* comp = animatingComponents.getReference (i).getComponent();
+        if (comp == nullptr)
+        {
+            animatingComponents.remove (i);
+            continue;
+        }
+
+        comp->repaint();
+
+        auto& props = comp->getProperties();
+        const double start = (double) props.getWithDefault ("vHoverStart", 0.0);
+        if (now - start >= 100.0)
+            animatingComponents.remove (i);
+    }
+
+    if (animatingComponents.isEmpty())
+        stopTimer();
 }
 
 //==============================================================================
@@ -634,6 +710,7 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
         samplerModeBtn.setToggleState (  isSample, juce::dontSendNotification);
 
         resized();
+        if (onLayoutChanged) onLayoutChanged();
     };
     srcTypeBox.onChange();
 }
@@ -1198,17 +1275,95 @@ void ScalableRackComponent::resized()
 }
 
 //==============================================================================
+// NavPanel
+//==============================================================================
+NavPanel::NavPanel (ViolentAudioProcessor& p, ScalableRackComponent& r,
+                     juce::Component& scrollSpaceIn, juce::Viewport& viewportIn)
+    : processor (p), rack (r), scrollSpace (scrollSpaceIn), viewport (viewportIn)
+{
+    refreshFromState();
+}
+
+void NavPanel::addEntry (const juce::String& label, juce::Component* target)
+{
+    auto btn = std::make_unique<juce::TextButton> (label);
+    btn->setRepaintsOnMouseActivity (true);
+    btn->onClick = [this, target]
+    {
+        if (target == nullptr) return;
+        const auto pos = scrollSpace.getLocalPoint (target, juce::Point<int> (0, 0));
+        viewport.setViewPosition (0, juce::jmax (0, pos.y - 8));
+    };
+    addAndMakeVisible (*btn);
+    entries.push_back ({ std::move (btn), juce::Component::SafePointer<juce::Component> (target) });
+}
+
+void NavPanel::refreshFromState()
+{
+    entries.clear();
+
+    auto& generatorPanel = rack.getGeneratorPanel();
+    for (int g = 0; g < generatorPanel.getNumUnits(); ++g)
+    {
+        auto* unit = generatorPanel.getUnit (g);
+        if (unit == nullptr) continue;
+
+        addEntry ("MIDI", &unit->getMidiRowComponent());
+
+        auto& card = unit->getCard();
+        addEntry (card.getSourceTypeLabel(), &card);
+
+        const auto& gen = processor.generators[(size_t) g];
+        for (int f = 0; f < gen.numFilters; ++f)
+            addEntry ("Filter", card.getFilterRow (f));
+        for (int x = 0; x < gen.numFx; ++x)
+            addEntry ("Effect", card.getFxCard (x));
+    }
+
+    auto& masterFilterPanel = rack.getMasterFilterPanel();
+    for (int m = 0; m < masterFilterPanel.getNumRows(); ++m)
+        addEntry ("Master Filter", masterFilterPanel.getRow (m));
+
+    setSize (WIDTH, preferredHeight());
+    resized();
+}
+
+int NavPanel::preferredHeight() const noexcept
+{
+    return 4 + (int) entries.size() * 28;
+}
+
+void NavPanel::paint (juce::Graphics& g)
+{
+    g.fillAll (ViolentColours::background);
+}
+
+void NavPanel::resized()
+{
+    auto a = getLocalBounds().reduced (4, 0);
+    for (auto& e : entries)
+        e.button->setBounds (a.removeFromTop (24).reduced (0, 1));
+}
+
+//==============================================================================
 // ViolentAudioProcessorEditor
 //==============================================================================
 ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor& p)
-    : AudioProcessorEditor (p), processor (p), rack (p)
+    : AudioProcessorEditor (p), processor (p), rack (p), navPanel (p, rack, rackScaler, rackViewport)
 {
     setLookAndFeel (&laf);
     setResizable (false, true);
-    setResizeLimits (juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 0.6f), 200,
-                      juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 1.5f), 6000);
+    setResizeLimits (NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 0.6f), 200,
+                      NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 1.5f), MAX_WINDOW_H);
 
-    addAndMakeVisible (rack);
+    rackViewport.setViewedComponent (&rackScaler, false);
+    rackViewport.setScrollBarsShown (true, false);
+    addAndMakeVisible (rackViewport);
+
+    navViewport.setViewedComponent (&navPanel, false);
+    navViewport.setScrollBarsShown (true, false);
+    addAndMakeVisible (navViewport);
+
     addAndMakeVisible (meter);
 
     previewBtn.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xE2\x96\xB6")));
@@ -1252,7 +1407,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (zoomLabel);
     zoomLabel.setVisible (false);
 
-    rack.onLayoutChanged = [this] { updateHeight(); };
+    rack.onLayoutChanged = [this] { navPanel.refreshFromState(); updateHeight(); };
 
     updateHeight();
 }
@@ -1265,8 +1420,10 @@ ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
 
 void ViolentAudioProcessorEditor::updateHeight()
 {
-    const int newW = juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
-    const int newH = 52 + juce::roundToInt (rack.preferredHeight() * uiScale);
+    rackScaler.updateLayout (uiScale);
+
+    const int newW = NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
+    const int newH = juce::jmin (MAX_WINDOW_H, HEADER_H + rackScaler.getHeight());
 
     if (newW == getWidth() && newH == getHeight())
         resized(); // size unchanged, but layout/scale may still need re-applying
@@ -1315,6 +1472,7 @@ void ViolentAudioProcessorEditor::loadSelectedPreset()
     if (processor.loadPreset (name))
     {
         rack.refreshFromState();
+        navPanel.refreshFromState();
         updateHeight();
     }
 }
@@ -1371,7 +1529,6 @@ void ViolentAudioProcessorEditor::resized()
     zoomInBtn.setBounds (zoomOutBtn.getRight() + 4, 12, 26, 26);
     zoomLabel.setBounds (zoomInBtn.getRight() + 8, 12, 60, 26);
 
-    const int rackH = rack.preferredHeight();
-    rack.setBounds (0, 0, ScalableRackComponent::BASE_WIDTH, rackH);
-    rack.setTransform (juce::AffineTransform::scale (uiScale).translated (0.0f, 52.0f));
+    navViewport.setBounds (0, HEADER_H, NavPanel::WIDTH, getHeight() - HEADER_H);
+    rackViewport.setBounds (NavPanel::WIDTH, HEADER_H, getWidth() - NavPanel::WIDTH, getHeight() - HEADER_H);
 }

@@ -21,7 +21,7 @@ namespace ViolentColours
 }
 
 //==============================================================================
-class ViolentLookAndFeel : public juce::LookAndFeel_V4
+class ViolentLookAndFeel : public juce::LookAndFeel_V4, private juce::Timer
 {
 public:
     ViolentLookAndFeel();
@@ -44,8 +44,20 @@ public:
 private:
     /** Shared background+border rendering for TextButton/ToggleButton/ComboBox,
         so all three read as one consistent control style, including hover. */
-    static void paintControlShape (juce::Graphics&, juce::Rectangle<float> bounds,
-                                    bool isOn, bool isHovered);
+    void paintControlShape (juce::Graphics&, juce::Component&, juce::Rectangle<float> bounds,
+                             bool isOn, bool isHovered);
+
+    // Hover/glow states fade in and out over ~100ms rather than snapping, so
+    // every control that reads hover state goes through this: it returns a
+    // 0..1 "how hovered" amount for `c` that eases towards isHovered's target,
+    // storing its animation state directly on the component (so it survives
+    // regardless of which LookAndFeel method last touched it) and keeping
+    // this timer running only while at least one control is mid-transition.
+    float animatedHoverAmount (juce::Component& c, bool isHovered);
+    void registerForHoverAnimation (juce::Component& c);
+    void timerCallback() override;
+
+    juce::Array<juce::Component::SafePointer<juce::Component>> animatingComponents;
 };
 
 //==============================================================================
@@ -483,6 +495,12 @@ public:
 
     int preferredHeight() const noexcept;
 
+    // For the nav panel: current source-type label ("Synth"/"Sampler"), and
+    // the filter-row/FX-card components at a given slot (nullptr if empty).
+    juce::String getSourceTypeLabel() const { return nameLabel.getText(); }
+    juce::Component* getFilterRow (int i) const { return filterRows[(size_t) i].get(); }
+    juce::Component* getFxCard (int i) const { return fxCards[(size_t) i].get(); }
+
 private:
     ViolentAudioProcessor& processor;
     int generator;
@@ -577,6 +595,10 @@ public:
     std::function<void()> onRemove;
     std::function<void()> onLayoutChanged;
 
+    // For the nav panel.
+    juce::Component& getMidiRowComponent() { return midiRow; }
+    GeneratorCard& getCard() { return card; }
+
 private:
     GeneratorMidiRow midiRow;
     GeneratorCard card;
@@ -601,6 +623,10 @@ public:
     // Tears down and rebuilds every card from scratch, e.g. after a preset load
     // changes generator counts/modes/filters/fx behind the UI's back.
     void refreshFromState();
+
+    // For the nav panel.
+    int getNumUnits() const noexcept { return processor.numActiveGenerators; }
+    GeneratorUnit* getUnit (int i) const { return units[(size_t) i].get(); }
 
 private:
     ViolentAudioProcessor& processor;
@@ -654,6 +680,10 @@ public:
 
     // Tears down and rebuilds every row from scratch, e.g. after a preset load.
     void refreshFromState();
+
+    // For the nav panel.
+    int getNumRows() const noexcept { return processor.numMasterFilters; }
+    MasterFilterRow* getRow (int i) const { return rows[(size_t) i].get(); }
 
 private:
     ViolentAudioProcessor& processor;
@@ -736,6 +766,10 @@ public:
     // so the owning editor can re-run its own zoom-aware sizing.
     std::function<void()> onLayoutChanged;
 
+    // For the nav panel.
+    GeneratorPanel& getGeneratorPanel() { return generatorPanel; }
+    MasterFilterPanel& getMasterFilterPanel() { return masterFilterPanel; }
+
 private:
     ViolentAudioProcessor& processor;
 
@@ -744,6 +778,70 @@ private:
     MixerPanel mixerPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScalableRackComponent)
+};
+
+//==============================================================================
+/** Sizes itself to the rack's scaled (post-zoom) dimensions and applies the
+    zoom transform to the rack, so a juce::Viewport wrapped around this sees
+    the true on-screen size for its scrollbar range — a Viewport reads its
+    content's getWidth()/getHeight() directly and knows nothing about
+    transforms applied further down the tree. */
+class RackScaler : public juce::Component
+{
+public:
+    explicit RackScaler (ScalableRackComponent& r) : rack (r) { addAndMakeVisible (rack); }
+
+    void updateLayout (float scale)
+    {
+        const int rackH = rack.preferredHeight();
+        rack.setBounds (0, 0, ScalableRackComponent::BASE_WIDTH, rackH);
+        rack.setTransform (juce::AffineTransform::scale (scale));
+        setSize (juce::roundToInt (ScalableRackComponent::BASE_WIDTH * scale),
+                 juce::roundToInt (rackH * scale));
+    }
+
+private:
+    ScalableRackComponent& rack;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RackScaler)
+};
+
+//==============================================================================
+/** Left-side outline of every module in the rack — MIDI modifiers,
+    generators, filters, and effects — labelled by type only. Clicking an
+    entry scrolls the rack viewport so that module comes into view. */
+class NavPanel : public juce::Component
+{
+public:
+    static constexpr int WIDTH = 132;
+
+    NavPanel (ViolentAudioProcessor& p, ScalableRackComponent& rack,
+              juce::Component& scrollSpace, juce::Viewport& viewport);
+
+    void resized() override;
+    void paint (juce::Graphics& g) override;
+
+    int preferredHeight() const noexcept;
+
+    // Tears down and rebuilds the entry list from the current rack structure.
+    void refreshFromState();
+
+private:
+    ViolentAudioProcessor& processor;
+    ScalableRackComponent& rack;
+    juce::Component& scrollSpace; // coordinate space scroll targets are resolved in (the viewport's content)
+    juce::Viewport& viewport;
+
+    struct Entry
+    {
+        std::unique_ptr<juce::TextButton> button;
+        juce::Component::SafePointer<juce::Component> target;
+    };
+    std::vector<Entry> entries;
+
+    void addEntry (const juce::String& label, juce::Component* target);
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NavPanel)
 };
 
 //==============================================================================
@@ -758,10 +856,18 @@ public:
     void resized() override;
 
 private:
+    static constexpr int HEADER_H = 52;
+    // Content taller than this scrolls instead of growing the window further.
+    static constexpr int MAX_WINDOW_H = 800;
+
     ViolentAudioProcessor& processor;
     ViolentLookAndFeel     laf;
 
     ScalableRackComponent rack;
+    RackScaler rackScaler { rack };
+    juce::Viewport rackViewport;
+    NavPanel navPanel;
+    juce::Viewport navViewport;
 
     LevelMeter  meter;
     juce::TextButton previewBtn;
