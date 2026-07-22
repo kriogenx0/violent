@@ -109,6 +109,8 @@ public:
         bool  enabled      = true;
         int   numFx        = 0;
         std::array<FxType, MAX_GENERATOR_FX> fxTypes {};
+        int   numMidiMods  = 0;
+        std::array<MidiModType, MAX_GENERATOR_MIDI_MODS> midiModTypes {};
     };
     std::array<GeneratorState, MAX_GENERATORS> generators;
 

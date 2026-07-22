@@ -22,29 +22,29 @@ ViolentAudioProcessor::createParameterLayout()
             ParamIDs::generatorPan (s),   sn + "Pan",
             NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
 
-        // MIDI modifier — applied to notes before they reach this generator.
-        // The whole stage is optional and off by default; when disabled,
-        // notes pass through unchanged regardless of the sub-settings below.
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::genMidiModEnabled (s), sn + "MIDI Modifier Enabled", false));
-        params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::genMidiTranspose (s), sn + "MIDI Transpose", -24, 24, 0));
-        params.push_back (std::make_unique<AudioParameterInt> (
-            ParamIDs::genMidiOctave (s),    sn + "MIDI Octave", -3, 3, 0));
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::genMidiKeyEnabled (s), sn + "MIDI Key Enabled", false));
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::genMidiKeyRoot (s), sn + "MIDI Key Root",
-            StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
-        params.push_back (std::make_unique<AudioParameterChoice> (
-            ParamIDs::genMidiKeyScale (s), sn + "MIDI Key Scale",
-            StringArray { "Major", "Minor" }, 0));
-        params.push_back (std::make_unique<AudioParameterBool> (
-            ParamIDs::genMidiArpEnabled (s), sn + "MIDI Arp Enabled", false));
-        params.push_back (std::make_unique<AudioParameterFloat> (
-            ParamIDs::genMidiArpRate (s), sn + "MIDI Arp Rate",
-            NormalisableRange<float> (0.05f, 1.0f, 0.001f, 0.5f), 0.15f,
-            AudioParameterFloatAttributes().withLabel ("s")));
+        // MIDI modifiers — a chain of stages applied to notes before they
+        // reach this generator; how many exist and what type each one is
+        // lives in GeneratorState (numMidiMods/midiModTypes), not here — this
+        // just registers every possible slot's sub-params up front, the same
+        // way the FX chain below does.
+        for (int m = 0; m < MAX_GENERATOR_MIDI_MODS; ++m)
+        {
+            const String mn = sn + "MIDI " + String (m + 1) + " ";
+            params.push_back (std::make_unique<AudioParameterInt> (
+                ParamIDs::genMidiTranspose (s, m), mn + "Transpose", -24, 24, 0));
+            params.push_back (std::make_unique<AudioParameterInt> (
+                ParamIDs::genMidiOctave (s, m),    mn + "Octave", -3, 3, 0));
+            params.push_back (std::make_unique<AudioParameterChoice> (
+                ParamIDs::genMidiKeyRoot (s, m), mn + "Key Root",
+                StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
+            params.push_back (std::make_unique<AudioParameterChoice> (
+                ParamIDs::genMidiKeyScale (s, m), mn + "Key Scale",
+                StringArray { "Major", "Minor" }, 0));
+            params.push_back (std::make_unique<AudioParameterFloat> (
+                ParamIDs::genMidiArpRate (s, m), mn + "Arp Rate",
+                NormalisableRange<float> (0.05f, 1.0f, 0.001f, 0.5f), 0.15f,
+                AudioParameterFloatAttributes().withLabel ("s")));
+        }
 
         // Source (osc/sampler unified)
         params.push_back (std::make_unique<AudioParameterChoice> (
@@ -446,29 +446,43 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
 
 int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
 {
-    if (apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (s))->load() <= 0.5f)
-        return note;
+    const auto& gen = generators[(size_t) s];
+    int result = note;
 
-    const int transpose = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiTranspose (s))->load());
-    const int octave    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiOctave (s))->load());
-    int result = note + transpose + octave * 12;
-
-    if (apvts.getRawParameterValue (ParamIDs::genMidiKeyEnabled (s))->load() > 0.5f)
+    for (int m = 0; m < gen.numMidiMods; ++m)
     {
-        const int root  = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyRoot (s))->load());
-        const int scale = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyScale (s))->load());
-        static constexpr int majorIntervals[] { 0, 2, 4, 5, 7, 9, 11 };
-        static constexpr int minorIntervals[] { 0, 2, 3, 5, 7, 8, 10 };
-        const auto& intervals = (scale == 0) ? majorIntervals : minorIntervals;
-
-        const int pitchClass = ((result - root) % 12 + 12) % 12;
-        int bestInterval = intervals[0], bestDist = 999;
-        for (int iv : intervals)
+        switch (gen.midiModTypes[(size_t) m])
         {
-            const int dist = juce::jmin (std::abs (pitchClass - iv), 12 - std::abs (pitchClass - iv));
-            if (dist < bestDist) { bestDist = dist; bestInterval = iv; }
+            case MidiModType::PitchShift:
+            {
+                const int transpose = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiTranspose (s, m))->load());
+                const int octave    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiOctave (s, m))->load());
+                result += transpose + octave * 12;
+                break;
+            }
+            case MidiModType::KeyShift:
+            {
+                const int root  = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyRoot (s, m))->load());
+                const int scale = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyScale (s, m))->load());
+                static constexpr int majorIntervals[] { 0, 2, 4, 5, 7, 9, 11 };
+                static constexpr int minorIntervals[] { 0, 2, 3, 5, 7, 8, 10 };
+                const auto& intervals = (scale == 0) ? majorIntervals : minorIntervals;
+
+                const int pitchClass = ((result - root) % 12 + 12) % 12;
+                int bestInterval = intervals[0], bestDist = 999;
+                for (int iv : intervals)
+                {
+                    const int dist = juce::jmin (std::abs (pitchClass - iv), 12 - std::abs (pitchClass - iv));
+                    if (dist < bestDist) { bestDist = dist; bestInterval = iv; }
+                }
+                result += (bestInterval - pitchClass);
+                break;
+            }
+            case MidiModType::Arp:
+                // Doesn't transform pitch — it changes note timing/gating
+                // instead (see isArpEnabled()/renderMidiModifiers()).
+                break;
         }
-        result += (bestInterval - pitchClass);
     }
 
     return juce::jlimit (0, 127, result);
@@ -476,10 +490,11 @@ int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
 
 bool ViolentAudioProcessor::isArpEnabled (int s) const
 {
-    if (apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (s))->load() <= 0.5f)
-        return false;
-
-    return apvts.getRawParameterValue (ParamIDs::genMidiArpEnabled (s))->load() > 0.5f;
+    const auto& gen = generators[(size_t) s];
+    for (int m = 0; m < gen.numMidiMods; ++m)
+        if (gen.midiModTypes[(size_t) m] == MidiModType::Arp)
+            return true;
+    return false;
 }
 
 void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
@@ -513,7 +528,14 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
             continue;
         }
 
-        const float rateSeconds  = apvts.getRawParameterValue (ParamIDs::genMidiArpRate (s))->load();
+        // isArpEnabled() above already confirmed a slot exists; if a
+        // generator stacks several Arp modifiers, the first one's rate wins.
+        int arpSlot = 0;
+        const auto& gen = generators[(size_t) s];
+        for (int m = 0; m < gen.numMidiMods; ++m)
+            if (gen.midiModTypes[(size_t) m] == MidiModType::Arp) { arpSlot = m; break; }
+
+        const float rateSeconds  = apvts.getRawParameterValue (ParamIDs::genMidiArpRate (s, arpSlot))->load();
         const int samplesPerStep = juce::jmax (1, static_cast<int> (processSpec.sampleRate * rateSeconds));
         const int gateSamples    = static_cast<int> (samplesPerStep * 0.7f);
 
@@ -1273,6 +1295,11 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
             xml->setAttribute ("gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fxtype",
                                static_cast<int> (gen.fxTypes[(size_t) x]));
 
+        xml->setAttribute ("gen_" + juce::String(s) + "_numMidiMods", gen.numMidiMods);
+        for (int m = 0; m < MAX_GENERATOR_MIDI_MODS; ++m)
+            xml->setAttribute ("gen_" + juce::String(s) + "_midi" + juce::String(m) + "_type",
+                               static_cast<int> (gen.midiModTypes[(size_t) m]));
+
         // Sample path for sample-mode generators
         juce::SpinLock::ScopedTryLockType tryLock (sampleModules[(size_t) s].lock);
         if (tryLock.isLocked() && sampleModules[(size_t) s].hasData)
@@ -1314,6 +1341,13 @@ void ViolentAudioProcessor::restoreStateFromXml (const juce::XmlElement& xml)
             gen.fxTypes[(size_t) x] = static_cast<FxType> (
                 juce::jlimit (0, NUM_FX_TYPES - 1,
                               xml.getIntAttribute ("gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fxtype", 0)));
+
+        gen.numMidiMods = juce::jlimit (0, MAX_GENERATOR_MIDI_MODS,
+                                        xml.getIntAttribute ("gen_" + juce::String(s) + "_numMidiMods", 0));
+        for (int m = 0; m < MAX_GENERATOR_MIDI_MODS; ++m)
+            gen.midiModTypes[(size_t) m] = static_cast<MidiModType> (
+                juce::jlimit (0, NUM_MIDI_MOD_TYPES - 1,
+                              xml.getIntAttribute ("gen_" + juce::String(s) + "_midi" + juce::String(m) + "_type", 0)));
 
         const juce::String path = xml.getStringAttribute ("gen_" + juce::String(s) + "_samplepath");
         if (path.isNotEmpty())

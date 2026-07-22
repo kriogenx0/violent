@@ -457,41 +457,59 @@ void GeneratorFxCard::resized()
 //==============================================================================
 // GeneratorMidiRow
 //==============================================================================
-GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx)
-    : processor (p), generator (generatorIdx)
+GeneratorMidiRow::GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx, int modSlot)
+    : processor (p), generator (generatorIdx), slot (modSlot)
 {
     addAndMakeVisible (removeBtn);
     removeBtn.onClick = [this] { if (onRemove) onRemove(); };
 
-    sectionLabel.setText ("MIDI", juce::dontSendNotification);
     sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f).withStyle ("Bold")));
     addAndMakeVisible (sectionLabel);
 
-    for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addAndMakeVisible (*k);
-
-    keyBtn.setClickingTogglesState (true);
-    addAndMakeVisible (keyBtn);
-    arpBtn.setClickingTogglesState (true);
-    addAndMakeVisible (arpBtn);
+    for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addChildComponent (*k);
 
     for (const auto& t : { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" })
         keyRootBox.addItem (t, keyRootBox.getNumItems() + 1);
     keyRootBox.setRepaintsOnMouseActivity (true);
-    addAndMakeVisible (keyRootBox);
+    addChildComponent (keyRootBox);
 
     for (const auto& t : { "Major", "Minor" })
         keyScaleBox.addItem (t, keyScaleBox.getNumItems() + 1);
     keyScaleBox.setRepaintsOnMouseActivity (true);
-    addAndMakeVisible (keyScaleBox);
+    addChildComponent (keyScaleBox);
 
-    transposeKnob.attachTo (processor.apvts, ParamIDs::genMidiTranspose (generator));
-    octaveKnob   .attachTo (processor.apvts, ParamIDs::genMidiOctave    (generator));
-    arpRateKnob  .attachTo (processor.apvts, ParamIDs::genMidiArpRate   (generator));
-    keyRootAtt   = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyRoot   (generator), keyRootBox);
-    keyScaleAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyScale  (generator), keyScaleBox);
-    keyEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiKeyEnabled (generator), keyBtn);
-    arpEnAtt     = std::make_unique<BA> (processor.apvts, ParamIDs::genMidiArpEnabled (generator), arpBtn);
+    transposeKnob.attachTo (processor.apvts, ParamIDs::genMidiTranspose (generator, slot));
+    octaveKnob   .attachTo (processor.apvts, ParamIDs::genMidiOctave    (generator, slot));
+    arpRateKnob  .attachTo (processor.apvts, ParamIDs::genMidiArpRate   (generator, slot));
+    keyRootAtt   = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyRoot  (generator, slot), keyRootBox);
+    keyScaleAtt  = std::make_unique<CA> (processor.apvts, ParamIDs::genMidiKeyScale (generator, slot), keyScaleBox);
+
+    showForType (processor.generators[(size_t) generator].midiModTypes[(size_t) slot]);
+}
+
+void GeneratorMidiRow::setAllInvisible()
+{
+    transposeKnob.setVisible (false);
+    octaveKnob.setVisible (false);
+    arpRateKnob.setVisible (false);
+    keyRootBox.setVisible (false);
+    keyScaleBox.setVisible (false);
+}
+
+void GeneratorMidiRow::showForType (MidiModType t)
+{
+    setAllInvisible();
+    sectionLabel.setText (midiModTypeName (t), juce::dontSendNotification);
+    switch (t)
+    {
+        case MidiModType::PitchShift:
+            transposeKnob.setVisible (true); octaveKnob.setVisible (true); break;
+        case MidiModType::KeyShift:
+            keyRootBox.setVisible (true); keyScaleBox.setVisible (true); break;
+        case MidiModType::Arp:
+            arpRateKnob.setVisible (true); break;
+    }
 }
 
 void GeneratorMidiRow::paint (juce::Graphics& g)
@@ -504,20 +522,24 @@ void GeneratorMidiRow::resized()
 {
     auto a = getLocalBounds().reduced (6, 3);
     removeBtn.setBounds (a.removeFromLeft (28).withSizeKeepingCentre (20, 20));
-    sectionLabel.setBounds (a.removeFromLeft (40));
-
+    sectionLabel.setBounds (a.removeFromLeft (96));
     a.removeFromLeft (4);
-    transposeKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
-    octaveKnob   .setBounds (a.removeFromLeft (72).reduced (2, 1));
 
-    a.removeFromLeft (6);
-    keyBtn     .setBounds (a.removeFromLeft (44).reduced (2, 14));
-    keyRootBox .setBounds (a.removeFromLeft (64).reduced (2, 14));
-    keyScaleBox.setBounds (a.removeFromLeft (74).reduced (2, 14));
-
-    a.removeFromLeft (6);
-    arpBtn      .setBounds (a.removeFromLeft (44).reduced (2, 14));
-    arpRateKnob .setBounds (a.removeFromLeft (72).reduced (2, 1));
+    const auto t = processor.generators[(size_t) generator].midiModTypes[(size_t) slot];
+    switch (t)
+    {
+        case MidiModType::PitchShift:
+            transposeKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
+            octaveKnob   .setBounds (a.removeFromLeft (72).reduced (2, 1));
+            break;
+        case MidiModType::KeyShift:
+            keyRootBox .setBounds (a.removeFromLeft (74).reduced (2, 14));
+            keyScaleBox.setBounds (a.removeFromLeft (84).reduced (2, 14));
+            break;
+        case MidiModType::Arp:
+            arpRateKnob.setBounds (a.removeFromLeft (72).reduced (2, 1));
+            break;
+    }
 }
 
 //==============================================================================
@@ -877,72 +899,91 @@ GeneratorUnit::GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx)
     card.onRemove = [this] { if (onRemove) onRemove(); };
     card.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
 
+    const auto& gen = processor.generators[(size_t) generator];
+    for (int m = 0; m < gen.numMidiMods; ++m)
+        addMidiRow (m, gen.midiModTypes[(size_t) m]);
+
     addAndMakeVisible (addMidiBtn);
     addMidiBtn.onClick = [this]
     {
-        if (auto* param = dynamic_cast<juce::AudioParameterBool*> (
-                processor.apvts.getParameter (ParamIDs::genMidiModEnabled (generator))))
-            *param = true;
-        setMidiRowPresent (true);
-        if (onLayoutChanged) onLayoutChanged();
-    };
+        auto& s = processor.generators[(size_t) generator];
+        if (s.numMidiMods >= MAX_GENERATOR_MIDI_MODS) return;
 
-    const bool present = processor.apvts.getRawParameterValue (ParamIDs::genMidiModEnabled (generator))->load() > 0.5f;
-    setMidiRowPresent (present);
+        juce::PopupMenu menu;
+        menu.addItem (1, "Pitch Shift");
+        menu.addItem (2, "Key Shift");
+        menu.addItem (3, "Arpeggiator");
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (addMidiBtn),
+            [this] (int result)
+            {
+                if (result == 0) return;
+                const MidiModType types[] = { MidiModType::PitchShift, MidiModType::KeyShift, MidiModType::Arp };
+                auto& s2 = processor.generators[(size_t) generator];
+                const int m = s2.numMidiMods++;
+                s2.midiModTypes[(size_t) m] = types[result - 1];
+                addMidiRow (m, types[result - 1]);
+                if (onLayoutChanged) onLayoutChanged();
+            });
+    };
 }
 
-void GeneratorUnit::setMidiRowPresent (bool present)
+void GeneratorUnit::addMidiRow (int arrayIndex, MidiModType type)
 {
-    if (present)
+    midiRows[(size_t) arrayIndex] = std::make_unique<GeneratorMidiRow> (processor, generator, arrayIndex);
+    addAndMakeVisible (*midiRows[(size_t) arrayIndex]);
+    midiRows[(size_t) arrayIndex]->showForType (type);
+    midiRows[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
     {
-        if (! midiRow)
+        auto& s = processor.generators[(size_t) generator];
+        for (int j = arrayIndex; j < s.numMidiMods - 1; ++j)
         {
-            midiRow = std::make_unique<GeneratorMidiRow> (processor, generator);
-            addAndMakeVisible (*midiRow);
-            midiRow->onRemove = [this]
-            {
-                if (auto* param = dynamic_cast<juce::AudioParameterBool*> (
-                        processor.apvts.getParameter (ParamIDs::genMidiModEnabled (generator))))
-                    *param = false;
-                setMidiRowPresent (false);
-                if (onLayoutChanged) onLayoutChanged();
-            };
+            s.midiModTypes[(size_t) j] = s.midiModTypes[(size_t) (j + 1)];
+            addMidiRow (j, s.midiModTypes[(size_t) j]);
         }
-    }
-    else
-    {
-        midiRow = nullptr;
-    }
-    addMidiBtn.setVisible (! present);
+        --s.numMidiMods;
+        midiRows[(size_t) s.numMidiMods] = nullptr;
+        if (onLayoutChanged) onLayoutChanged();
+    };
 }
 
 int GeneratorUnit::preferredHeight() const noexcept
 {
-    if (midiRow)
-        return GeneratorMidiRow::ROW_H + ARROW_H + card.preferredHeight();
-    return ADD_MIDI_BTN_H + 4 + card.preferredHeight();
+    const auto& gen = processor.generators[(size_t) generator];
+    int h = gen.numMidiMods * (GeneratorMidiRow::ROW_H + 4);
+    if (gen.numMidiMods < MAX_GENERATOR_MIDI_MODS) h += ADD_MIDI_BTN_H + 4;
+    if (gen.numMidiMods > 0) h += ARROW_H;
+    return h + card.preferredHeight();
 }
 
 void GeneratorUnit::paint (juce::Graphics& g)
 {
-    if (midiRow)
+    if (processor.generators[(size_t) generator].numMidiMods > 0)
         drawGeneratorRoutingArrow (g, getWidth(), arrowY);
 }
 
 void GeneratorUnit::resized()
 {
     auto a = getLocalBounds();
+    const auto& gen = processor.generators[(size_t) generator];
 
-    if (midiRow)
+    for (int m = 0; m < MAX_GENERATOR_MIDI_MODS; ++m)
     {
-        midiRow->setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
-        arrowY = a.removeFromTop (ARROW_H).getCentreY();
+        if (midiRows[(size_t) m])
+        {
+            midiRows[(size_t) m]->setBounds (a.removeFromTop (GeneratorMidiRow::ROW_H));
+            a.removeFromTop (4);
+        }
     }
-    else
+    if (gen.numMidiMods < MAX_GENERATOR_MIDI_MODS)
     {
         addMidiBtn.setBounds (a.removeFromTop (ADD_MIDI_BTN_H).reduced (4, 2));
         a.removeFromTop (4);
     }
+    addMidiBtn.setVisible (gen.numMidiMods < MAX_GENERATOR_MIDI_MODS);
+
+    if (gen.numMidiMods > 0)
+        arrowY = a.removeFromTop (ARROW_H).getCentreY();
 
     card.setBounds (a);
 }
@@ -1587,8 +1628,9 @@ void NavPanel::refreshFromState()
         auto* unit = generatorPanel.getUnit (g);
         if (unit == nullptr) continue;
 
-        if (auto* midiRow = unit->getMidiRowComponent())
-            addEntry ("MIDI", midiRow);
+        const auto& genForMidi = processor.generators[(size_t) g];
+        for (int m = 0; m < unit->getNumMidiMods(); ++m)
+            addEntry (midiModTypeName (genForMidi.midiModTypes[(size_t) m]), unit->getMidiRow (m));
 
         auto& card = unit->getCard();
         addEntry (card.getSourceTypeLabel(), &card);

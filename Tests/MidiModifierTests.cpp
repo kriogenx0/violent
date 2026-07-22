@@ -10,16 +10,26 @@ void setInt (ViolentAudioProcessor& proc, const juce::String& id, int value)
         *p = value;
 }
 
-void setBool (ViolentAudioProcessor& proc, const juce::String& id, bool value)
-{
-    if (auto* p = dynamic_cast<juce::AudioParameterBool*> (proc.apvts.getParameter (id)))
-        *p = value;
-}
-
 void setChoice (ViolentAudioProcessor& proc, const juce::String& id, int index)
 {
     if (auto* p = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id)))
         *p = index;
+}
+
+// Clears any modifiers from a previous test and appends one of the given
+// type, returning its slot index — mirrors how the UI's "+ MIDI Modifier"
+// popup appends a new chain entry.
+int addModifier (ViolentAudioProcessor& proc, MidiModType type)
+{
+    auto& gen = proc.generators[0];
+    const int slot = gen.numMidiMods++;
+    gen.midiModTypes[(size_t) slot] = type;
+    return slot;
+}
+
+void clearModifiers (ViolentAudioProcessor& proc)
+{
+    proc.generators[0].numMidiMods = 0;
 }
 
 class MidiModifierTests : public juce::UnitTest
@@ -31,64 +41,61 @@ public:
     {
         ViolentAudioProcessor proc;
 
-        beginTest ("The MIDI modifier stage is off by default, so notes pass through unchanged");
+        beginTest ("With no modifiers in the chain, notes pass through unchanged");
         {
             expect (! proc.isArpEnabled (0));
-            setInt (proc, ParamIDs::genMidiTranspose (0), 5);
             expectEquals (proc.applyMidiModifier (0, 60), 60);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 0);
         }
 
-        beginTest ("Enabling the stage lets sub-settings (e.g. transpose) take effect");
+        beginTest ("Adding a Pitch Shift modifier lets transpose/octave take effect");
         {
-            setBool (proc, ParamIDs::genMidiModEnabled (0), true);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 5);
+            // Slots are reused across tests (each test clears the chain but
+            // params aren't reset with it), so every test that touches
+            // transpose/octave sets both explicitly rather than assuming a
+            // fresh default.
+            const int slot = addModifier (proc, MidiModType::PitchShift);
+            setInt (proc, ParamIDs::genMidiTranspose (0, slot), 5);
+            setInt (proc, ParamIDs::genMidiOctave (0, slot), 0);
             expectEquals (proc.applyMidiModifier (0, 60), 65);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 0);
+            setInt (proc, ParamIDs::genMidiOctave (0, slot), 1);
+            expectEquals (proc.applyMidiModifier (0, 60), 77); // +5 semitones, +1 octave
+            clearModifiers (proc);
         }
 
-        beginTest ("Disabling the stage again bypasses it even with sub-settings still set");
+        beginTest ("Removing the modifier again bypasses it even with sub-settings still set");
         {
-            setInt (proc, ParamIDs::genMidiTranspose (0), 5);
-            setBool (proc, ParamIDs::genMidiModEnabled (0), false);
+            // genMidiTranspose(0, 0) still holds 5 from the previous test, but
+            // with an empty chain it should never be read.
             expectEquals (proc.applyMidiModifier (0, 60), 60);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 0);
-        }
-
-        // The rest of these tests exercise the sub-settings themselves, so
-        // they run with the modifier stage explicitly enabled throughout.
-        setBool (proc, ParamIDs::genMidiModEnabled (0), true);
-
-        beginTest ("Transpose shifts by semitones");
-        {
-            setInt (proc, ParamIDs::genMidiTranspose (0), 5);
-            expectEquals (proc.applyMidiModifier (0, 60), 65);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 0);
         }
 
         beginTest ("Octave shifts by 12 semitones per octave, either direction");
         {
-            setInt (proc, ParamIDs::genMidiOctave (0), 1);
+            const int slot = addModifier (proc, MidiModType::PitchShift);
+            setInt (proc, ParamIDs::genMidiTranspose (0, slot), 0);
+            setInt (proc, ParamIDs::genMidiOctave (0, slot), 1);
             expectEquals (proc.applyMidiModifier (0, 60), 72);
-            setInt (proc, ParamIDs::genMidiOctave (0), -2);
+            setInt (proc, ParamIDs::genMidiOctave (0, slot), -2);
             expectEquals (proc.applyMidiModifier (0, 60), 36);
-            setInt (proc, ParamIDs::genMidiOctave (0), 0);
+            clearModifiers (proc);
         }
 
         beginTest ("Result is clamped to the valid MIDI note range");
         {
-            setInt (proc, ParamIDs::genMidiTranspose (0), 24);
+            const int slot = addModifier (proc, MidiModType::PitchShift);
+            setInt (proc, ParamIDs::genMidiOctave (0, slot), 0);
+            setInt (proc, ParamIDs::genMidiTranspose (0, slot), 24);
             expectEquals (proc.applyMidiModifier (0, 120), 127);
-            setInt (proc, ParamIDs::genMidiTranspose (0), -24);
+            setInt (proc, ParamIDs::genMidiTranspose (0, slot), -24);
             expectEquals (proc.applyMidiModifier (0, 5), 0);
-            setInt (proc, ParamIDs::genMidiTranspose (0), 0);
+            clearModifiers (proc);
         }
 
-        beginTest ("Key quantize snaps out-of-scale notes to the nearest scale tone");
+        beginTest ("Key Shift quantizes out-of-scale notes to the nearest scale tone");
         {
-            setBool (proc, ParamIDs::genMidiKeyEnabled (0), true);
-            setChoice (proc, ParamIDs::genMidiKeyRoot (0), 0);  // C
-            setChoice (proc, ParamIDs::genMidiKeyScale (0), 0); // Major
+            const int slot = addModifier (proc, MidiModType::KeyShift);
+            setChoice (proc, ParamIDs::genMidiKeyRoot (0, slot), 0);  // C
+            setChoice (proc, ParamIDs::genMidiKeyScale (0, slot), 0); // Major
 
             // C major = {C D E F G A B}. C#4 (61) sits a semitone above C4 and
             // a whole tone below D4, so the nearer scale tone is C4 (60).
@@ -97,20 +104,32 @@ public:
             // Notes already in the scale are left alone.
             expectEquals (proc.applyMidiModifier (0, 62), 62); // D4
 
-            setBool (proc, ParamIDs::genMidiKeyEnabled (0), false);
+            clearModifiers (proc);
         }
 
-        beginTest ("Arp flag reflects the bound parameter, but only while the stage is enabled");
+        beginTest ("Modifiers chain in order: Pitch Shift then Key Shift");
+        {
+            const int pitchSlot = addModifier (proc, MidiModType::PitchShift);
+            const int keySlot   = addModifier (proc, MidiModType::KeyShift);
+            setInt    (proc, ParamIDs::genMidiOctave    (0, pitchSlot), 0);
+            setInt    (proc, ParamIDs::genMidiTranspose (0, pitchSlot), 1);  // C4 -> C#4
+            setChoice (proc, ParamIDs::genMidiKeyRoot   (0, keySlot),  0);   // C
+            setChoice (proc, ParamIDs::genMidiKeyScale  (0, keySlot),  0);   // Major
+
+            // Transposed to C#4 (61) first, then quantized back to C4 (60).
+            expectEquals (proc.applyMidiModifier (0, 60), 60);
+            clearModifiers (proc);
+        }
+
+        beginTest ("isArpEnabled reflects whether the chain contains an Arp modifier");
         {
             expect (! proc.isArpEnabled (0));
-            setBool (proc, ParamIDs::genMidiArpEnabled (0), true);
-            expect (proc.isArpEnabled (0));
-
-            setBool (proc, ParamIDs::genMidiModEnabled (0), false);
+            addModifier (proc, MidiModType::PitchShift);
             expect (! proc.isArpEnabled (0));
-
-            setBool (proc, ParamIDs::genMidiModEnabled (0), true);
-            setBool (proc, ParamIDs::genMidiArpEnabled (0), false);
+            addModifier (proc, MidiModType::Arp);
+            expect (proc.isArpEnabled (0));
+            clearModifiers (proc);
+            expect (! proc.isArpEnabled (0));
         }
     }
 };

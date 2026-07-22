@@ -3,8 +3,23 @@
 #include "FxChain.h"
 
 //==============================================================================
-static constexpr int MAX_GENERATORS        = 8;
-static constexpr int MAX_GENERATOR_FX      = 8;
+static constexpr int MAX_GENERATORS          = 8;
+static constexpr int MAX_GENERATOR_FX        = 8;
+static constexpr int MAX_GENERATOR_MIDI_MODS = 4;
+
+// MIDI modifier types — a generator can chain several of these, in any order
+enum class MidiModType { PitchShift = 0, KeyShift, Arp };
+static constexpr int NUM_MIDI_MOD_TYPES = 3;
+
+inline const char* midiModTypeName (MidiModType t)
+{
+    switch (t) {
+        case MidiModType::PitchShift: return "Pitch Shift";
+        case MidiModType::KeyShift:   return "Key Shift";
+        case MidiModType::Arp:        return "Arpeggiator";
+        default:                      return "Pitch Shift";
+    }
+}
 
 // Source types — waveforms + sample playback unified
 enum class SourceType
@@ -35,16 +50,13 @@ namespace ParamIDs
     inline juce::String generatorLevel (int s) { return "gen_" + juce::String(s) + "_level"; }
     inline juce::String generatorPan   (int s) { return "gen_" + juce::String(s) + "_pan"; }
 
-    // MIDI modifier — sits before the generator in the signal chain, and is
-    // itself optional (bypassed entirely when genMidiModEnabled is false)
-    inline juce::String genMidiModEnabled (int s) { return "gen_" + juce::String(s) + "_midi_mod_en"; }
-    inline juce::String genMidiTranspose  (int s) { return "gen_" + juce::String(s) + "_midi_transpose"; }
-    inline juce::String genMidiOctave     (int s) { return "gen_" + juce::String(s) + "_midi_octave"; }
-    inline juce::String genMidiKeyEnabled (int s) { return "gen_" + juce::String(s) + "_midi_key_en"; }
-    inline juce::String genMidiKeyRoot    (int s) { return "gen_" + juce::String(s) + "_midi_key_root"; }
-    inline juce::String genMidiKeyScale   (int s) { return "gen_" + juce::String(s) + "_midi_key_scale"; }
-    inline juce::String genMidiArpEnabled (int s) { return "gen_" + juce::String(s) + "_midi_arp_en"; }
-    inline juce::String genMidiArpRate    (int s) { return "gen_" + juce::String(s) + "_midi_arp_rate"; }
+    // MIDI modifiers — a chain of stages before the generator, slot m; which
+    // sub-params are actually used depends on that slot's chosen MidiModType
+    inline juce::String genMidiTranspose (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_transpose"; }
+    inline juce::String genMidiOctave    (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_octave"; }
+    inline juce::String genMidiKeyRoot   (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_key_root"; }
+    inline juce::String genMidiKeyScale  (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_key_scale"; }
+    inline juce::String genMidiArpRate   (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_arp_rate"; }
 
     // Source (unified oscillator/sampler) inside generator s
     inline juce::String genSrcType      (int s) { return "gen_" + juce::String(s) + "_src_type"; }

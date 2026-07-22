@@ -392,40 +392,39 @@ private:
 };
 
 //==============================================================================
-/** MIDI modifier — sits before the generator: transpose, octave shift,
-    quantize-to-key, and a simple held-note arpeggiator. */
+/** One MIDI modifier stage: sits before the generator, and is either a pitch
+    shift (transpose+octave), a key shift (quantize-to-key), or a simple
+    held-note arpeggiator. Added/removed and chained just like filters and
+    effects, so a generator can stack several of these in any order. */
 class GeneratorMidiRow : public juce::Component
 {
 public:
     static constexpr int ROW_H = 58;
 
-    GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx);
+    GeneratorMidiRow (ViolentAudioProcessor& p, int generatorIdx, int modSlot);
 
     void resized() override;
     void paint (juce::Graphics&) override;
 
-    // Existing (not being added/removed like filters and effects, since a
-    // generator has at most one) — fired when the trash button is clicked.
     std::function<void()> onRemove;
+    void showForType (MidiModType t);
 
 private:
     ViolentAudioProcessor& processor;
-    int generator;
+    int generator, slot;
 
     TrashButton      removeBtn;
     juce::Label      sectionLabel;
     LabelledKnob     transposeKnob { "Transpose", ViolentColours::teal   };
     LabelledKnob     octaveKnob    { "Octave",    ViolentColours::blue   };
-    juce::TextButton keyBtn        { "Key" };
     juce::ComboBox   keyRootBox;
     juce::ComboBox   keyScaleBox;
-    juce::TextButton arpBtn        { "Arp" };
     LabelledKnob     arpRateKnob  { "Arp Rate", ViolentColours::yellow };
 
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::unique_ptr<CA> keyRootAtt, keyScaleAtt;
-    std::unique_ptr<BA> keyEnAtt, arpEnAtt;
+
+    void setAllInvisible();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorMidiRow)
 };
@@ -566,10 +565,11 @@ private:
 };
 
 //==============================================================================
-/** One generator's full vertical slot in the rack: an optional MIDI modifier
-    stage — added/removed just like a filter or effect, since a generator
-    doesn't have to have one — plus the generator card itself, joined by a
-    routing arrow whenever the modifier is present. */
+/** One generator's full vertical slot in the rack: a chain of MIDI modifier
+    stages (each a pitch shift, key shift, or arpeggiator) — added/removed
+    just like filters/effects, since a generator can have zero or several —
+    plus the generator card itself, joined by a routing arrow whenever at
+    least one modifier is present. */
 class GeneratorUnit : public juce::Component
 {
 public:
@@ -586,20 +586,21 @@ public:
     std::function<void()> onRemove;
     std::function<void()> onLayoutChanged;
 
-    // For the nav panel; midi row is nullptr when not added.
-    juce::Component* getMidiRowComponent() { return midiRow.get(); }
+    // For the nav panel.
+    int getNumMidiMods() const noexcept { return processor.generators[(size_t) generator].numMidiMods; }
+    juce::Component* getMidiRow (int i) const { return midiRows[(size_t) i].get(); }
     GeneratorCard& getCard() { return card; }
 
 private:
     ViolentAudioProcessor& processor;
     int generator;
 
-    std::unique_ptr<GeneratorMidiRow> midiRow;
+    std::array<std::unique_ptr<GeneratorMidiRow>, MAX_GENERATOR_MIDI_MODS> midiRows;
     juce::TextButton addMidiBtn { "+ MIDI Modifier" };
     GeneratorCard card;
     int arrowY = 0;
 
-    void setMidiRowPresent (bool present);
+    void addMidiRow (int arrayIndex, MidiModType type);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GeneratorUnit)
 };
