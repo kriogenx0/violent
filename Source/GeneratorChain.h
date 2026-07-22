@@ -82,4 +82,7 @@ namespace ParamIDs
     inline juce::String genFxFilterType (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_ftype"; }
     inline juce::String genFxFilterCut  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fcut"; }
     inline juce::String genFxFilterRes  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fres"; }
+
+    // Send from generator s into shared FX bus b, 0..1
+    inline juce::String genSend (int s, int b) { return "gen_" + juce::String(s) + "_send" + juce::String(b); }
 }

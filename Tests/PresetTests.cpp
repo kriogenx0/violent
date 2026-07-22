@@ -49,6 +49,24 @@ public:
             expect (reader.generators[0].fxTypes[0] == FxType::Filter);
         }
 
+        beginTest ("State XML round-trips shared FX bus types and generator sends");
+        {
+            ViolentAudioProcessor writer;
+            writer.numFxBuses = 2;
+            writer.fxBusTypes[0] = FxType::Compressor;
+            writer.fxBusTypes[1] = FxType::Filter;
+
+            auto xml = writer.createStateXml();
+            expect (xml != nullptr);
+
+            ViolentAudioProcessor reader;
+            reader.restoreStateFromXml (*xml);
+
+            expectEquals (reader.numFxBuses, 2);
+            expect (reader.fxBusTypes[0] == FxType::Compressor);
+            expect (reader.fxBusTypes[1] == FxType::Filter);
+        }
+
         beginTest ("savePreset() writes a file and getPresetNames() lists it");
         {
             ViolentAudioProcessor proc;

@@ -126,6 +126,16 @@ public:
     int numMasterFilters = 0;
     std::array<MasterFilterState, MAX_MASTER_FILTERS> masterFilters;
 
+    // -----------------------------------------------------------------------
+    // Shared FX buses — an alternative routing path alongside each
+    // generator's own private FX chain: any generator can send a portion of
+    // its (post-FX) signal into any bus via a per-generator/per-bus send
+    // level, each bus runs a single chosen effect, and the result is mixed
+    // additively into the master bus.
+    // -----------------------------------------------------------------------
+    int numFxBuses = 0;
+    std::array<FxType, MAX_FX_BUSES> fxBusTypes {};
+
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
     std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
@@ -221,6 +231,7 @@ private:
     {
         OscSlot osc;
         float level = 1.0f, pan = 0.0f;
+        std::array<float, MAX_FX_BUSES> sendGain {};
 
         // Per-generator DSP objects
         std::array<FxSlotDSP, MAX_GENERATOR_FX>      fxDSP;
@@ -236,6 +247,11 @@ private:
     };
 
     std::array<GeneratorDSP, MAX_GENERATORS> generatorDSP;
+
+    // Shared FX buses: one DSP instance (reusing the same per-effect-type
+    // processing as a generator's own FX slot) + one scratch buffer per bus.
+    std::array<FxSlotDSP, MAX_FX_BUSES>                fxBusDSP;
+    std::array<juce::AudioBuffer<float>, MAX_FX_BUSES> fxBusScratch;
 
     // -----------------------------------------------------------------------
     // Voice pool — tagged by generator
@@ -272,6 +288,7 @@ private:
     void renderGenerator (int s, juce::AudioBuffer<float>& master);
     void applyGeneratorFx (int s, GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
     void mixGeneratorsToMaster (juce::AudioBuffer<float>& master);
+    void processFxBuses (juce::AudioBuffer<float>& master, int numSamples);
 
     // Master filters use JUCE's TPT state-variable filter — unconditionally
     // stable at any cutoff/sample-rate ratio, unlike the naive Chamberlin SVF
