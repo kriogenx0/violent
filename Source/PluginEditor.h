@@ -40,6 +40,8 @@ private:
     juce::TextButton zoomInBtn  { "+" };
     juce::Label      zoomLabel;
 
+    juce::TextButton randomizeBtn { "Randomize" };
+
     float uiScale = 1.0f;
     void setUiScale (float newScale);
 

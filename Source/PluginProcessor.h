@@ -168,6 +168,14 @@ public:
 
     void loadSample (int slotIndex, const juce::File& file);
 
+    // Randomizes every active generator's source/synth settings, plus the
+    // params of every existing FX slot (generator chains, shared FX buses,
+    // and master filters) — keeping each slot's chosen type as-is and only
+    // randomizing the sub-params that type actually uses. Doesn't touch
+    // structure (generator/FX/MIDI-modifier counts or types) or MIDI
+    // modifiers/sends/EQ.
+    void randomizeAll();
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     static const juce::StringArray& eqParamIDs();

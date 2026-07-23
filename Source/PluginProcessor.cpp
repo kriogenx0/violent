@@ -1271,6 +1271,106 @@ void ViolentAudioProcessor::loadSample (int slotIndex, const juce::File& file)
     sampler.loadSample (slotIndex, file);
 }
 
+void ViolentAudioProcessor::randomizeAll()
+{
+    auto& rng = juce::Random::getSystemRandom();
+
+    auto randF = [this, &rng] (const juce::String& id)
+    {
+        if (auto* p = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (id)))
+        {
+            const auto range = p->getNormalisableRange();
+            *p = range.start + rng.nextFloat() * (range.end - range.start);
+        }
+    };
+    auto randI = [this, &rng] (const juce::String& id)
+    {
+        if (auto* p = dynamic_cast<juce::AudioParameterInt*> (apvts.getParameter (id)))
+            *p = p->getRange().getStart() + rng.nextInt (p->getRange().getLength() + 1);
+    };
+    auto randC = [this, &rng] (const juce::String& id, int numChoices)
+    {
+        if (auto* p = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (id)))
+            *p = rng.nextInt (numChoices);
+    };
+
+    auto randomizeFxParamsAt = [&] (FxType type,
+                                     const juce::String& drive, const juce::String& tone, const juce::String& level, const juce::String& distType,
+                                     const juce::String& thresh, const juce::String& ratio, const juce::String& attack, const juce::String& release, const juce::String& makeup,
+                                     const juce::String& room, const juce::String& damping, const juce::String& wet, const juce::String& width,
+                                     const juce::String& filterType, const juce::String& filterCut, const juce::String& filterRes)
+    {
+        switch (type)
+        {
+            case FxType::Distortion:
+                randF (drive); randF (tone); randF (level); randC (distType, 3);
+                break;
+            case FxType::Compressor:
+                randF (thresh); randF (ratio); randF (attack); randF (release); randF (makeup);
+                break;
+            case FxType::Gate:
+                randF (thresh); randF (ratio); randF (attack); randF (release);
+                break;
+            case FxType::Reverb:
+                randF (room); randF (damping); randF (wet); randF (width);
+                break;
+            case FxType::Filter:
+                randC (filterType, 4); randF (filterCut); randF (filterRes);
+                break;
+            default: break;
+        }
+    };
+
+    for (int s = 0; s < numActiveGenerators; ++s)
+    {
+        // Synth / source — exclude Sample (index 5) from the random waveform
+        // choice, since randomizing onto it without a loaded buffer is silence.
+        randC (ParamIDs::genSrcType (s), (int) SourceType::Sample);
+        randF (ParamIDs::genSrcGain (s));
+        randI (ParamIDs::genSrcOct  (s));
+        randI (ParamIDs::genSrcSemi (s));
+        randF (ParamIDs::genSrcDet  (s));
+        randF (ParamIDs::genSrcPhase (s));
+        randF (ParamIDs::genSrcPW   (s));
+        randF (ParamIDs::genSrcPan  (s));
+        randF (ParamIDs::genSrcVel  (s));
+        randI (ParamIDs::genSrcUni  (s));
+        randF (ParamIDs::genSrcUniSpread (s));
+        randF (ParamIDs::genSrcAtt (s));
+        randF (ParamIDs::genSrcDec (s));
+        randF (ParamIDs::genSrcSus (s));
+        randF (ParamIDs::genSrcRel (s));
+        randF (ParamIDs::generatorLevel (s));
+        randF (ParamIDs::generatorPan   (s));
+
+        // This generator's own FX chain — keeps each slot's existing type,
+        // randomizes only the params that type actually uses.
+        const auto& gen = generators[(size_t) s];
+        for (int x = 0; x < gen.numFx; ++x)
+            randomizeFxParamsAt (gen.fxTypes[(size_t) x],
+                ParamIDs::genFxDrive (s, x), ParamIDs::genFxTone (s, x), ParamIDs::genFxLevel (s, x), ParamIDs::genFxDistType (s, x),
+                ParamIDs::genFxThresh (s, x), ParamIDs::genFxRatio (s, x), ParamIDs::genFxAttack (s, x), ParamIDs::genFxRelease (s, x), ParamIDs::genFxMakeup (s, x),
+                ParamIDs::genFxRoom (s, x), ParamIDs::genFxDamping (s, x), ParamIDs::genFxWet (s, x), ParamIDs::genFxWidth (s, x),
+                ParamIDs::genFxFilterType (s, x), ParamIDs::genFxFilterCut (s, x), ParamIDs::genFxFilterRes (s, x));
+    }
+
+    // Shared FX buses — same per-type param set as a generator's FX chain.
+    for (int b = 0; b < numFxBuses; ++b)
+        randomizeFxParamsAt (fxBusTypes[(size_t) b],
+            ParamIDs::busDrive (b), ParamIDs::busTone (b), ParamIDs::busLevel (b), ParamIDs::busDistType (b),
+            ParamIDs::busThresh (b), ParamIDs::busRatio (b), ParamIDs::busAttack (b), ParamIDs::busRelease (b), ParamIDs::busMakeup (b),
+            ParamIDs::busRoom (b), ParamIDs::busDamping (b), ParamIDs::busWet (b), ParamIDs::busWidth (b),
+            ParamIDs::busFilterType (b), ParamIDs::busFilterCut (b), ParamIDs::busFilterRes (b));
+
+    // Master filters
+    for (int f = 0; f < numMasterFilters; ++f)
+    {
+        randC (ParamIDs::masterFltType (f), 4);
+        randF (ParamIDs::masterFltCut  (f));
+        randF (ParamIDs::masterFltRes  (f));
+    }
+}
+
 //==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {

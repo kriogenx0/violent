@@ -64,6 +64,9 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (zoomLabel);
     zoomLabel.setVisible (false);
 
+    randomizeBtn.onClick = [this] { processor.randomizeAll(); };
+    addAndMakeVisible (randomizeBtn);
+
     rack.onLayoutChanged = [this] { navPanel.refreshFromState(); updateHeight(); };
 
     updateHeight();
@@ -190,6 +193,8 @@ void ViolentAudioProcessorEditor::resized()
     zoomOutBtn.setBounds (savePresetBtn.getRight() + 16, 12, 26, 26);
     zoomInBtn.setBounds (zoomOutBtn.getRight() + 4, 12, 26, 26);
     zoomLabel.setBounds (zoomInBtn.getRight() + 8, 12, 60, 26);
+
+    randomizeBtn.setBounds (zoomLabel.getRight() + 16, 12, 90, 26);
 
     navViewport.setBounds (0, HEADER_H, NavPanel::WIDTH, getHeight() - HEADER_H);
     rackViewport.setBounds (NavPanel::WIDTH, HEADER_H, getWidth() - NavPanel::WIDTH, getHeight() - HEADER_H);
