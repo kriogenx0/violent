@@ -44,10 +44,22 @@ target_sources(Violent
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
-        Source/StandaloneApp.cpp
+        Source/Main.cpp
         Source/SynthEngine.h
         Source/FxChain.h
         Source/GeneratorChain.h
+        Source/Views/SharedComponents.cpp
+        Source/Views/SharedComponents.h
+        Source/Views/Generators.cpp
+        Source/Views/Generators.h
+        Source/Views/MasterFilterView.cpp
+        Source/Views/MasterFilterView.h
+        Source/Views/FxBusView.cpp
+        Source/Views/FxBusView.h
+        Source/Views/MixerView.cpp
+        Source/Views/MixerView.h
+        Source/Views/RackView.cpp
+        Source/Views/RackView.h
 )
 
 target_compile_definitions(Violent
