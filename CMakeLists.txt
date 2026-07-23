@@ -45,9 +45,16 @@ target_sources(Violent
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/Main.cpp
-        Source/SynthEngine.h
         Source/FxChain.h
         Source/GeneratorChain.h
+        Source/SoundProcessing/Synth.h
+        Source/SoundProcessing/Sampler.cpp
+        Source/SoundProcessing/Sampler.h
+        Source/SoundProcessing/MidiModifier.cpp
+        Source/SoundProcessing/MidiModifier.h
+        Source/SoundProcessing/Filter.h
+        Source/SoundProcessing/Effects.h
+        Source/SoundProcessing/Modulator.h
         Source/Views/SharedComponents.cpp
         Source/Views/SharedComponents.h
         Source/Views/Generators.cpp

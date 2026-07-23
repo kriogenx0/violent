@@ -300,7 +300,7 @@ ViolentAudioProcessor::ViolentAudioProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    formatManager.registerBasicFormats();
+    sampler.prepare();
     for (const auto& id : eqParamIDs())
         apvts.addParameterListener (id, this);
 }
@@ -318,7 +318,7 @@ void ViolentAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     processSpec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
     processSpec.numChannels      = 2;
 
-    for (auto& v : voices) v.prepare (sampleRate);
+    synthEngine.prepare (sampleRate);
 
     for (auto& dsp : generatorDSP)
         dsp.prepare (processSpec);
@@ -346,7 +346,7 @@ void ViolentAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
 
 void ViolentAudioProcessor::releaseResources()
 {
-    allNotesOff();
+    synthEngine.allNotesOff();
     prepared = false;
 }
 
@@ -412,9 +412,9 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
                 }
                 else
                 {
-                    int vi = findFreeVoice (s);
-                    if (vi < 0) vi = findVoiceToSteal (s);
-                    if (vi >= 0) startVoice (vi, note, vel, s);
+                    int vi = synthEngine.findFreeVoice (s);
+                    if (vi < 0) vi = synthEngine.findVoiceToSteal (s);
+                    if (vi >= 0) synthEngine.startVoice (vi, note, vel, s, generatorDSP[(size_t) s].osc);
                 }
             }
         }
@@ -432,13 +432,13 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
                 }
                 else
                 {
-                    stopNoteForGenerator (s, note);
+                    synthEngine.stopNoteForGenerator (s, note);
                 }
             }
         }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
         {
-            allNotesOff();
+            synthEngine.allNotesOff();
             for (auto& st : midiModState) st.heldNotes.clear();
         }
     }
@@ -447,54 +447,13 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
 int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
 {
     const auto& gen = generators[(size_t) s];
-    int result = note;
-
-    for (int m = 0; m < gen.numMidiMods; ++m)
-    {
-        switch (gen.midiModTypes[(size_t) m])
-        {
-            case MidiModType::PitchShift:
-            {
-                const int transpose = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiTranspose (s, m))->load());
-                const int octave    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiOctave (s, m))->load());
-                result += transpose + octave * 12;
-                break;
-            }
-            case MidiModType::KeyShift:
-            {
-                const int root  = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyRoot (s, m))->load());
-                const int scale = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genMidiKeyScale (s, m))->load());
-                static constexpr int majorIntervals[] { 0, 2, 4, 5, 7, 9, 11 };
-                static constexpr int minorIntervals[] { 0, 2, 3, 5, 7, 8, 10 };
-                const auto& intervals = (scale == 0) ? majorIntervals : minorIntervals;
-
-                const int pitchClass = ((result - root) % 12 + 12) % 12;
-                int bestInterval = intervals[0], bestDist = 999;
-                for (int iv : intervals)
-                {
-                    const int dist = juce::jmin (std::abs (pitchClass - iv), 12 - std::abs (pitchClass - iv));
-                    if (dist < bestDist) { bestDist = dist; bestInterval = iv; }
-                }
-                result += (bestInterval - pitchClass);
-                break;
-            }
-            case MidiModType::Arp:
-                // Doesn't transform pitch — it changes note timing/gating
-                // instead (see isArpEnabled()/renderMidiModifiers()).
-                break;
-        }
-    }
-
-    return juce::jlimit (0, 127, result);
+    return MidiModifier::apply (apvts, s, note, gen.numMidiMods, gen.midiModTypes);
 }
 
 bool ViolentAudioProcessor::isArpEnabled (int s) const
 {
     const auto& gen = generators[(size_t) s];
-    for (int m = 0; m < gen.numMidiMods; ++m)
-        if (gen.midiModTypes[(size_t) m] == MidiModType::Arp)
-            return true;
-    return false;
+    return MidiModifier::hasArp (gen.numMidiMods, gen.midiModTypes);
 }
 
 void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
@@ -503,11 +462,14 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
     {
         auto& st = midiModState[(size_t) s];
 
-        if (! isArpEnabled (s))
+        const auto& gen = generators[(size_t) s];
+        const int arpSlot = MidiModifier::firstArpSlot (gen.numMidiMods, gen.midiModTypes);
+
+        if (arpSlot < 0)
         {
             if (st.arpNoteIsOn)
             {
-                stopNoteForGenerator (s, st.arpCurrentNote);
+                synthEngine.stopNoteForGenerator (s, st.arpCurrentNote);
                 st.arpNoteIsOn = false;
             }
             st.arpStepIndex = -1;
@@ -520,20 +482,13 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
         {
             if (st.arpNoteIsOn)
             {
-                stopNoteForGenerator (s, st.arpCurrentNote);
+                synthEngine.stopNoteForGenerator (s, st.arpCurrentNote);
                 st.arpNoteIsOn = false;
             }
             st.arpStepIndex = -1;
             st.arpSamplePos = st.arpNextEventSample = 0;
             continue;
         }
-
-        // isArpEnabled() above already confirmed a slot exists; if a
-        // generator stacks several Arp modifiers, the first one's rate wins.
-        int arpSlot = 0;
-        const auto& gen = generators[(size_t) s];
-        for (int m = 0; m < gen.numMidiMods; ++m)
-            if (gen.midiModTypes[(size_t) m] == MidiModType::Arp) { arpSlot = m; break; }
 
         const float rateSeconds  = apvts.getRawParameterValue (ParamIDs::genMidiArpRate (s, arpSlot))->load();
         const int samplesPerStep = juce::jmax (1, static_cast<int> (processSpec.sampleRate * rateSeconds));
@@ -555,7 +510,7 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
 
             if (st.arpNoteIsOn)
             {
-                stopNoteForGenerator (s, st.arpCurrentNote);
+                synthEngine.stopNoteForGenerator (s, st.arpCurrentNote);
                 st.arpNoteIsOn        = false;
                 st.arpNextEventSample = st.arpSamplePos + (samplesPerStep - gateSamples);
             }
@@ -564,9 +519,9 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
                 st.arpStepIndex = (st.arpStepIndex + 1) % (int) st.heldNotes.size();
                 const int note  = st.heldNotes[(size_t) st.arpStepIndex];
 
-                int vi = findFreeVoice (s);
-                if (vi < 0) vi = findVoiceToSteal (s);
-                if (vi >= 0) startVoice (vi, note, 1.0f, s);
+                int vi = synthEngine.findFreeVoice (s);
+                if (vi < 0) vi = synthEngine.findVoiceToSteal (s);
+                if (vi >= 0) synthEngine.startVoice (vi, note, 1.0f, s, generatorDSP[(size_t) s].osc);
 
                 st.arpCurrentNote     = note;
                 st.arpNoteIsOn        = true;
@@ -574,60 +529,6 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
             }
         }
     }
-}
-
-int ViolentAudioProcessor::findFreeVoice (int generatorIdx) const noexcept
-{
-    for (int i = 0; i < GENERATOR_VOICES; ++i)
-        if (!voices[(size_t) i].active && voices[(size_t) i].generatorIdx == generatorIdx)
-            return i;
-    // Also accept unassigned (default generatorIdx == 0)
-    for (int i = 0; i < GENERATOR_VOICES; ++i)
-        if (!voices[(size_t) i].active) return i;
-    return -1;
-}
-
-int ViolentAudioProcessor::findVoiceToSteal (int generatorIdx) const noexcept
-{
-    // Steal the oldest released voice from this generator, else any
-    for (int i = 0; i < GENERATOR_VOICES; ++i)
-        if (voices[(size_t) i].generatorIdx == generatorIdx && !voices[(size_t) i].isActive())
-            return i;
-    return 0;
-}
-
-void ViolentAudioProcessor::startVoice (int vi, int note, float velocity, int generatorIdx)
-{
-    auto& v       = voices[(size_t) vi];
-    v.note        = note;
-    v.generatorIdx   = generatorIdx;
-    v.velocity    = velocity;
-    v.baseFreqHz  = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (note));
-    v.active      = true;
-
-    const auto& o = generatorDSP[(size_t) generatorIdx].osc;
-    for (auto& osc : v.osc) osc.reset (o.phase);
-    v.adsr.setParams (o.att, o.dec, o.sus, o.rel);
-    v.adsr.noteOn();
-}
-
-void ViolentAudioProcessor::stopNote (int note)
-{
-    for (auto& v : voices)
-        if (v.active && v.note == note)
-            v.adsr.noteOff();
-}
-
-void ViolentAudioProcessor::stopNoteForGenerator (int generatorIdx, int note)
-{
-    for (auto& v : voices)
-        if (v.active && v.generatorIdx == generatorIdx && v.note == note)
-            v.adsr.noteOff();
-}
-
-void ViolentAudioProcessor::allNotesOff()
-{
-    for (auto& v : voices) v.reset();
 }
 
 //==============================================================================
@@ -785,7 +686,7 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
 
     // Render all voices belonging to this generator
     bool anyActive = false;
-    for (auto& v : voices)
+    for (auto& v : synthEngine.voices)
     {
         if (!v.active || v.generatorIdx != s) continue;
         anyActive = true;
@@ -810,18 +711,12 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
                 if (o.type == (int) SourceType::Sample)
                 {
                     // Sample playback — use the generator's sample slot if loaded
-                    // (generator index maps to sample slot index)
-                    juce::SpinLock::ScopedTryLockType tryLock (sampleModules[(size_t) s].lock);
-                    if (tryLock.isLocked() && sampleModules[(size_t) s].hasData)
-                    {
-                        const auto& sm   = sampleModules[(size_t) s];
-                        const double pr  = std::pow (2.0, (v.note - 60) / 12.0);
-                        sample = v.osc[u].phase < (float) sm.buffer.getNumSamples()
-                                   ? sm.buffer.getSample (0, (int) v.osc[u].phase)
-                                   : 0.0f;
-                        v.osc[u].phase += (float) pr;
-                        if (v.osc[u].phase >= sm.buffer.getNumSamples()) v.osc[u].phase = 0.0f;
-                    }
+                    // (generator index maps to sample slot index). Reuses this
+                    // unison voice's oscillator phase as a fractional sample
+                    // position (see Sampler::tick).
+                    juce::SpinLock::ScopedTryLockType tryLock (sampler.modules[(size_t) s].lock);
+                    if (tryLock.isLocked() && sampler.modules[(size_t) s].hasData)
+                        sample = Sampler::tick (sampler.modules[(size_t) s].buffer, v.osc[u].phase, v.note);
                     else { sample = 0.0f; }
                 }
                 else
@@ -917,33 +812,14 @@ void ViolentAudioProcessor::mixGeneratorsToMaster (juce::AudioBuffer<float>& mas
         const float res    = apvts.getRawParameterValue (ParamIDs::masterFltRes  (f))->load();
         const int   type   = static_cast<int> (apvts.getRawParameterValue (ParamIDs::masterFltType (f))->load());
 
-        using FType = juce::dsp::StateVariableTPTFilterType;
         auto& mfDsp = masterFilterDSP[(size_t) f];
-        const bool isNotch = (type == 3);
-
-        mfDsp.filter.setType (isNotch ? FType::lowpass
-                                       : (type == 1 ? FType::highpass
-                                                     : (type == 2 ? FType::bandpass : FType::lowpass)));
-        mfDsp.filter.setCutoffFrequency (cutoff);
-        mfDsp.filter.setResonance (res);
-
-        if (isNotch)
-        {
-            mfDsp.notchHelper.setType (FType::highpass);
-            mfDsp.notchHelper.setCutoffFrequency (cutoff);
-            mfDsp.notchHelper.setResonance (res);
-        }
+        mfDsp.proc.setParams (type, cutoff, res);
 
         for (int ch = 0; ch < 2; ++ch)
         {
             float* data = masterFilterScratch.getWritePointer (ch);
             for (int n = 0; n < numSamples; ++n)
-            {
-                const float x = data[n];
-                float v = mfDsp.filter.processSample (ch, x);
-                if (isNotch) v += mfDsp.notchHelper.processSample (ch, x);
-                data[n] = v;
-            }
+                data[n] = mfDsp.proc.processSample (ch, data[n]);
         }
 
         master.addFrom (0, 0, masterFilterScratch, 0, 0, numSamples);
@@ -1045,33 +921,13 @@ void ViolentAudioProcessor::applyGeneratorFx (int s, GeneratorDSP& dsp, const Ge
                 const float res    = apvts.getRawParameterValue (ParamIDs::genFxFilterRes  (s, x))->load();
                 const int   ftype  = static_cast<int> (
                                         apvts.getRawParameterValue (ParamIDs::genFxFilterType (s, x))->load());
-
-                using FType = juce::dsp::StateVariableTPTFilterType;
-                const bool isNotch = (ftype == 3);
-
-                fxdsp.filter.setType (isNotch ? FType::lowpass
-                                               : (ftype == 1 ? FType::highpass
-                                                             : (ftype == 2 ? FType::bandpass : FType::lowpass)));
-                fxdsp.filter.setCutoffFrequency (cutoff);
-                fxdsp.filter.setResonance (res);
-
-                if (isNotch)
-                {
-                    fxdsp.filterNotchHelper.setType (FType::highpass);
-                    fxdsp.filterNotchHelper.setCutoffFrequency (cutoff);
-                    fxdsp.filterNotchHelper.setResonance (res);
-                }
+                fxdsp.filter.setParams (ftype, cutoff, res);
 
                 for (int ch = 0; ch < buf.getNumChannels(); ++ch)
                 {
                     float* data = buf.getWritePointer (ch);
                     for (int n = 0; n < buf.getNumSamples(); ++n)
-                    {
-                        const float x2 = data[n];
-                        float v = fxdsp.filter.processSample (ch, x2);
-                        if (isNotch) v += fxdsp.filterNotchHelper.processSample (ch, x2);
-                        data[n] = v;
-                    }
+                        data[n] = fxdsp.filter.processSample (ch, data[n]);
                 }
                 break;
             }
@@ -1162,33 +1018,13 @@ void ViolentAudioProcessor::processFxBuses (juce::AudioBuffer<float>& master, in
                 const float res    = apvts.getRawParameterValue (ParamIDs::busFilterRes  (b))->load();
                 const int   ftype  = static_cast<int> (
                                         apvts.getRawParameterValue (ParamIDs::busFilterType (b))->load());
-
-                using FType = juce::dsp::StateVariableTPTFilterType;
-                const bool isNotch = (ftype == 3);
-
-                fxdsp.filter.setType (isNotch ? FType::lowpass
-                                               : (ftype == 1 ? FType::highpass
-                                                             : (ftype == 2 ? FType::bandpass : FType::lowpass)));
-                fxdsp.filter.setCutoffFrequency (cutoff);
-                fxdsp.filter.setResonance (res);
-
-                if (isNotch)
-                {
-                    fxdsp.filterNotchHelper.setType (FType::highpass);
-                    fxdsp.filterNotchHelper.setCutoffFrequency (cutoff);
-                    fxdsp.filterNotchHelper.setResonance (res);
-                }
+                fxdsp.filter.setParams (ftype, cutoff, res);
 
                 for (int ch = 0; ch < buf.getNumChannels(); ++ch)
                 {
                     float* data = buf.getWritePointer (ch);
                     for (int n = 0; n < numSamples; ++n)
-                    {
-                        const float x2 = data[n];
-                        float v = fxdsp.filter.processSample (ch, x2);
-                        if (isNotch) v += fxdsp.filterNotchHelper.processSample (ch, x2);
-                        data[n] = v;
-                    }
+                        data[n] = fxdsp.filter.processSample (ch, data[n]);
                 }
                 break;
             }
@@ -1301,10 +1137,10 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
                                static_cast<int> (gen.midiModTypes[(size_t) m]));
 
         // Sample path for sample-mode generators
-        juce::SpinLock::ScopedTryLockType tryLock (sampleModules[(size_t) s].lock);
-        if (tryLock.isLocked() && sampleModules[(size_t) s].hasData)
+        juce::SpinLock::ScopedTryLockType tryLock (sampler.modules[(size_t) s].lock);
+        if (tryLock.isLocked() && sampler.modules[(size_t) s].hasData)
             xml->setAttribute ("gen_" + juce::String(s) + "_samplepath",
-                               sampleModules[(size_t) s].filePath);
+                               sampler.modules[(size_t) s].filePath);
     }
 
     xml->setAttribute ("numMasterFilters", numMasterFilters);
@@ -1432,21 +1268,7 @@ bool ViolentAudioProcessor::loadPreset (const juce::String& name)
 
 void ViolentAudioProcessor::loadSample (int slotIndex, const juce::File& file)
 {
-    auto reader = std::unique_ptr<juce::AudioFormatReader> (
-        formatManager.createReaderFor (file));
-    if (reader == nullptr) return;
-
-    juce::AudioBuffer<float> tmp (static_cast<int> (reader->numChannels),
-                                   static_cast<int> (reader->lengthInSamples));
-    reader->read (&tmp, 0, static_cast<int> (reader->lengthInSamples), 0, true, true);
-
-    {
-        juce::SpinLock::ScopedLockType lock (sampleModules[(size_t) slotIndex].lock);
-        auto& sm    = sampleModules[(size_t) slotIndex];
-        sm.buffer   = std::move (tmp);
-        sm.filePath = file.getFullPathName();
-        sm.hasData  = true;
-    }
+    sampler.loadSample (slotIndex, file);
 }
 
 //==============================================================================

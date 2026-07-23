@@ -1,8 +1,12 @@
 #pragma once
 #include <JuceHeader.h>
-#include "SynthEngine.h"
 #include "FxChain.h"
 #include "GeneratorChain.h"
+#include "SoundProcessing/Synth.h"
+#include "SoundProcessing/Sampler.h"
+#include "SoundProcessing/MidiModifier.h"
+#include "SoundProcessing/Filter.h"
+#include "SoundProcessing/Effects.h"
 
 static constexpr int NUM_EQ_BANDS = 10;
 static constexpr int MAX_MASTER_FILTERS = 4;
@@ -162,21 +166,6 @@ public:
     std::atomic<int>  previewPattern { (int) PreviewPattern::Arpeggios };
     void setPreviewPattern (int pattern);
 
-    // --- Sample modules (kept for future sample-player generators) ---
-    struct SampleModule
-    {
-        juce::AudioBuffer<float> buffer;
-        juce::String             filePath;
-        bool                     hasData = false;
-        juce::SpinLock           lock;
-
-        SampleModule() = default;
-        JUCE_DECLARE_NON_COPYABLE (SampleModule)
-    };
-
-    std::array<SampleModule, MAX_SAMPLES> sampleModules;
-    juce::AudioFormatManager             formatManager;
-
     void loadSample (int slotIndex, const juce::File& file);
 
 private:
@@ -189,46 +178,11 @@ private:
         juce::dsp::IIR::Coefficients<float>>;
 
     // -----------------------------------------------------------------------
-    // DSP state — one copy per generator
+    // DSP state — one copy per generator. The individual signal-processor
+    // types (OscSlot/FxSlotDSP/...) live under Source/SoundProcessing/; this
+    // struct is just the per-generator bookkeeping of which instances belong
+    // to which generator, owned by the processor as the orchestrator.
     // -----------------------------------------------------------------------
-    struct OscSlot
-    {
-        bool  en = false;
-        int   type = 1, octave = 0, semitone = 0, unisonVoices = 1;
-        float gainLin = 1.0f, detune = 0.0f, phase = 0.0f, pulseWidth = 0.5f;
-        float pan = 0.0f, velSens = 1.0f, unisonSpread = 15.0f;
-        float att = 0.01f, dec = 0.1f, sus = 0.7f, rel = 0.3f;
-    };
-
-    // Per-FX-slot DSP objects (one instance per active FX slot in a generator)
-    struct FxSlotDSP
-    {
-        juce::dsp::Compressor<float>  compressor;
-        juce::dsp::Gain<float>        makeup;
-        juce::dsp::NoiseGate<float>   gate;
-        juce::dsp::Reverb             reverb;
-        StereoFilter                  distToneFilter;
-        // Filter FX type — JUCE's TPT state-variable filter, unconditionally
-        // stable at any cutoff/sample-rate ratio (same as the master filters).
-        // "Notch" is synthesised as lowpass + highpass.
-        juce::dsp::StateVariableTPTFilter<float> filter, filterNotchHelper;
-        bool prepared = false;
-
-        void prepare (const juce::dsp::ProcessSpec& spec)
-        {
-            compressor.prepare (spec);
-            makeup.prepare (spec);
-            gate.prepare (spec);
-            reverb.prepare (spec);
-            distToneFilter.prepare (spec);
-            *distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
-                spec.sampleRate, 4000.0);
-            filter.prepare (spec);
-            filterNotchHelper.prepare (spec);
-            prepared = true;
-        }
-    };
-
     struct GeneratorDSP
     {
         OscSlot osc;
@@ -255,32 +209,8 @@ private:
     std::array<FxSlotDSP, MAX_FX_BUSES>                fxBusDSP;
     std::array<juce::AudioBuffer<float>, MAX_FX_BUSES> fxBusScratch;
 
-    // -----------------------------------------------------------------------
-    // Voice pool — tagged by generator
-    // -----------------------------------------------------------------------
-    struct GeneratorVoice
-    {
-        bool  active     = false;
-        int   note       = -1;
-        int   generatorIdx  = 0;
-        float velocity   = 1.0f;
-        float baseFreqHz = 0.0f;
-
-        OscillatorGen osc[MAX_UNISON];
-        ADSREnv       adsr;
-
-        void prepare (double sr) noexcept { adsr.setSampleRate (sr); }
-        void reset()  noexcept
-        {
-            active = false; note = -1;
-            for (auto& o : osc) o.reset();
-            adsr.reset();
-        }
-        bool isActive() const noexcept { return adsr.isActive(); }
-    };
-
-    static constexpr int GENERATOR_VOICES = 16;
-    std::array<GeneratorVoice, GENERATOR_VOICES> voices;
+    SynthEngine   synthEngine;
+    SamplerEngine sampler;
 
     // -----------------------------------------------------------------------
     // Internal methods
@@ -292,41 +222,14 @@ private:
     void mixGeneratorsToMaster (juce::AudioBuffer<float>& master);
     void processFxBuses (juce::AudioBuffer<float>& master, int numSamples);
 
-    // Master filters use JUCE's TPT state-variable filter — unconditionally
-    // stable at any cutoff/sample-rate ratio, unlike the naive Chamberlin SVF
-    // used per-generator (which can diverge once cutoff approaches ~0.18x
-    // the sample rate). "Notch" is synthesised as lowpass + highpass.
-    struct MasterFilterDSP
-    {
-        juce::dsp::StateVariableTPTFilter<float> filter, notchHelper;
-
-        void prepare (const juce::dsp::ProcessSpec& spec)
-        {
-            filter.prepare (spec);
-            notchHelper.prepare (spec);
-        }
-
-        void reset()
-        {
-            filter.reset();
-            notchHelper.reset();
-        }
-    };
     std::array<MasterFilterDSP, MAX_MASTER_FILTERS> masterFilterDSP;
     juce::AudioBuffer<float> masterFilterScratch;
 
-    int  findFreeVoice  (int generatorIdx) const noexcept;
-    int  findVoiceToSteal (int generatorIdx) const noexcept;
-    void startVoice (int vi, int note, float velocity, int generatorIdx);
-    void stopNote   (int note);
-    void stopNoteForGenerator (int generatorIdx, int note);
-    void allNotesOff();
-
 public:
     // -----------------------------------------------------------------------
-    // Per-generator MIDI modifier — transpose/octave/key-quantize are plain
-    // deterministic transforms recomputed on both note-on and note-off; the
-    // arpeggiator is its own tiny sample-accurate step sequencer per
+    // Per-generator MIDI modifier chain — transpose/octave/key-quantize are
+    // plain deterministic transforms recomputed on both note-on and note-off;
+    // the arpeggiator is its own tiny sample-accurate step sequencer per
     // generator, driven from held (already-transformed) notes. Exposed
     // publicly (rather than just private) since they're pure, const queries
     // that unit tests exercise directly.
@@ -336,15 +239,6 @@ public:
 private:
     void renderMidiModifiers (int numSamples);
 
-    struct MidiModifierState
-    {
-        std::vector<int> heldNotes;
-        int  arpStepIndex      = -1;
-        int  arpSamplePos      = 0;
-        int  arpNextEventSample = 0;
-        bool arpNoteIsOn       = false;
-        int  arpCurrentNote    = -1;
-    };
     std::array<MidiModifierState, MAX_GENERATORS> midiModState;
 
     // -----------------------------------------------------------------------

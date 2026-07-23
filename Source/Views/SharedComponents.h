@@ -72,7 +72,7 @@ public:
             findColour (juce::TextButton::buttonColourId), highlighted, down);
 
         auto sq = getLocalBounds().toFloat().withSizeKeepingCentre (
-            juce::jmin (getWidth(), getHeight()) * 0.85f, juce::jmin (getWidth(), getHeight()) * 0.85f);
+            juce::jmin (getWidth(), getHeight()) * 0.55f, juce::jmin (getWidth(), getHeight()) * 0.55f);
         auto b = sq.reduced (sq.getWidth() * 0.24f, sq.getHeight() * 0.14f);
         g.setColour (ViolentColours::red);
 
