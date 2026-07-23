@@ -7,9 +7,11 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     : AudioProcessorEditor (p), processor (p), rack (p), navPanel (p, rack, rackScaler, rackViewport)
 {
     setLookAndFeel (&laf);
-    setResizable (false, true);
-    setResizeLimits (NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 0.6f), 200,
-                      NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * 1.5f), MAX_WINDOW_H);
+    // Width is fixed (only the zoom buttons change it, not dragging or the
+    // native maximize button) — see updateHeight(), which re-pins the resize
+    // limits' width every time it runs. Height is freely resizable, including
+    // via the native macOS maximize button.
+    setResizable (true, false);
 
     rackViewport.setViewedComponent (&rackScaler, false);
     rackViewport.setScrollBarsShown (true, false);
@@ -79,6 +81,11 @@ void ViolentAudioProcessorEditor::updateHeight()
 
     const int newW = NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
     const int newH = juce::jmin (MAX_WINDOW_H, HEADER_H + rackScaler.getHeight());
+
+    // Lock width at the current zoom level; leave height free so the user can
+    // drag-resize or hit the native maximize button to see more of the rack
+    // without scrolling, beyond the auto-fit height computed above.
+    setResizeLimits (newW, 200, newW, 100000);
 
     if (newW == getWidth() && newH == getHeight())
         resized(); // size unchanged, but layout/scale may still need re-applying
