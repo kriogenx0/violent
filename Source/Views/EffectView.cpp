@@ -296,6 +296,11 @@ void EffectPanel::resized()
     {
         if (!rows[(size_t) x]) continue;
         rows[(size_t) x]->setBounds (a.removeFromTop (rows[(size_t) x]->preferredHeight()));
+        // setBounds() is a no-op (and skips resized()) when a row's bounds
+        // happen not to have moved — which is the common case here, since
+        // adding/removing a *generator* changes routing-button visibility
+        // without changing any row's own position — so force it explicitly.
+        rows[(size_t) x]->resized();
         a.removeFromTop (8);
     }
     if (processor.numEffects < MAX_EFFECTS)

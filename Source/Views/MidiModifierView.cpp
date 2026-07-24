@@ -236,6 +236,11 @@ void MidiModifierPanel::resized()
     {
         if (!rows[(size_t) m]) continue;
         rows[(size_t) m]->setBounds (a.removeFromTop (MidiModifierRow::ROW_H));
+        // setBounds() is a no-op (and skips resized()) when a row's bounds
+        // happen not to have moved — which is the common case here, since
+        // adding/removing a *generator* changes routing-button visibility
+        // without changing any row's own position — so force it explicitly.
+        rows[(size_t) m]->resized();
         a.removeFromTop (8);
     }
     if (processor.numMidiModifiers < MAX_MIDI_MODIFIERS)

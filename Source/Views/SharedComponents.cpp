@@ -37,6 +37,12 @@ void ViolentUI::drawRotarySlider (juce::Graphics& g,
     const float rx = centreX - radius, ry = centreY - radius, rw = radius * 2.0f;
     const float angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
+    // The knob's own assigned colour (set via LabelledKnob's constructor or
+    // setAccentColour()) is what it reads "hot" as — falls back to the
+    // global accent for any slider that never had one assigned.
+    juce::Colour hot = slider.findColour (juce::Slider::rotarySliderFillColourId, false);
+    if (! hot.isOpaque()) hot = ViolentColours::accent;
+
     const bool  wantsGlow = slider.isEnabled() && (slider.isMouseOver (true) || slider.isMouseButtonDown());
     const float glow = animatedHoverAmount (slider, wantsGlow);
     if (glow > 0.001f)
@@ -46,7 +52,7 @@ void ViolentUI::drawRotarySlider (juce::Graphics& g,
         for (int i = 3; i >= 1; --i)
         {
             const float glowR = radius + (float) i;
-            g.setColour (ViolentColours::accent.withAlpha (0.045f * (float) (4 - i) * glow));
+            g.setColour (hot.withAlpha (0.045f * (float) (4 - i) * glow));
             g.fillEllipse (centreX - glowR, centreY - glowR, glowR * 2.0f, glowR * 2.0f);
         }
     }
@@ -61,9 +67,9 @@ void ViolentUI::drawRotarySlider (juce::Graphics& g,
     g.strokePath (trackArc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
 
-    // Knobs read hot (accent orange) the further they're turned up, and cool
-    // (muted grey) near the bottom of their range, regardless of parameter.
-    const juce::Colour arc = ViolentColours::subtext.interpolatedWith (ViolentColours::accent, sliderPos);
+    // Knobs read hot (their assigned colour) the further they're turned up,
+    // and cool (muted grey) near the bottom of their range.
+    const juce::Colour arc = ViolentColours::subtext.interpolatedWith (hot, sliderPos);
 
     juce::Path valArc;
     valArc.addCentredArc (centreX, centreY, radius - 3.0f, radius - 3.0f,
@@ -106,11 +112,16 @@ void ViolentUI::paintControlShape (juce::Graphics& g, juce::Component& c, juce::
 {
     const float hover = animatedHoverAmount (c, isHovered);
 
-    g.setColour (isOn ? ViolentColours::accent
+    // A component's own buttonOnColourId (e.g. set by GeneratorCard to its
+    // per-generator accent) wins over the global accent if it's been set.
+    juce::Colour on = c.findColour (juce::TextButton::buttonOnColourId, false);
+    if (! on.isOpaque()) on = ViolentColours::accent;
+
+    g.setColour (isOn ? on
                        : ViolentColours::surface.interpolatedWith (ViolentColours::overlay, hover));
     g.fillRoundedRectangle (b, ViolentColours::cornerRadius);
 
-    juce::Colour border = isOn ? ViolentColours::accent.brighter (0.2f) : ViolentColours::overlay;
+    juce::Colour border = isOn ? on.brighter (0.2f) : ViolentColours::overlay;
     border = border.brighter (0.35f * hover);
     g.setColour (border);
     g.drawRoundedRectangle (b, ViolentColours::cornerRadius, 1.0f);

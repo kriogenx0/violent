@@ -33,10 +33,17 @@ public:
     juce::String getDisplayName() const { return nameLabel.getText(); }
 
     // Colour is plain UI-owned state rather than an APVTS parameter, so
-    // nothing pushes updates to the swatch automatically the way slider
-    // attachments do — call this after code (e.g. Randomize) changes it
-    // from outside the swatch's own colour picker.
-    void refreshColour() { colourBtn.setColour (processor.generators[(size_t) generator].colour); repaint(); }
+    // nothing pushes updates to the swatch (or the knobs/waveform trace it
+    // themes) automatically the way slider attachments do — call this after
+    // code (e.g. Randomize) changes it from outside the swatch's own colour
+    // picker.
+    void refreshColour()
+    {
+        const auto c = processor.generators[(size_t) generator].colour;
+        colourBtn.setColour (c);
+        applyAccentColour (c);
+        repaint();
+    }
 
 private:
     ViolentAudioProcessor& processor;
@@ -84,6 +91,11 @@ private:
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
+
+    // Themes every knob plus the waveform trace to the generator's chosen
+    // accent colour, so the swatch in the corner affects the whole card
+    // rather than just its border.
+    void applyAccentColour (juce::Colour c);
 
     // Bounding boxes drawn as insets in paint().
     juce::Rectangle<int> waveShapeBoxBounds, adsrBoxBounds;

@@ -30,7 +30,12 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     addAndMakeVisible (nameLabel);
 
     colourBtn.setColour (gen.colour);
-    colourBtn.onColourChanged = [this] (juce::Colour c) { processor.generators[(size_t) generator].colour = c; repaint(); };
+    colourBtn.onColourChanged = [this] (juce::Colour c)
+    {
+        processor.generators[(size_t) generator].colour = c;
+        applyAccentColour (c);
+        repaint();
+    };
     addAndMakeVisible (colourBtn);
 
     addAndMakeVisible (waveformView);
@@ -105,9 +110,24 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
         resized();
     };
     srcTypeBox.onChange();
+
+    applyAccentColour (gen.colour);
 }
 
 GeneratorCard::~GeneratorCard() {}
+
+void GeneratorCard::applyAccentColour (juce::Colour c)
+{
+    for (auto* k : { &gainKnob, &panKnob, &velKnob,
+                     &detKnob, &phaseKnob, &pwKnob, &uniKnob, &uniSpreadKnob,
+                     &attKnob, &decKnob, &susKnob, &relKnob })
+        k->setAccentColour (c);
+    waveformView.setAccentColour (c);
+
+    removeBtn.setGlyphColour (c);
+    for (juce::Button* b : { (juce::Button*) &enableBtn, (juce::Button*) &synthModeBtn, (juce::Button*) &samplerModeBtn })
+        b->setColour (juce::TextButton::buttonOnColourId, c);
+}
 
 void GeneratorCard::openFilePicker()
 {
