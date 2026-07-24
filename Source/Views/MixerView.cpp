@@ -17,6 +17,9 @@ MixerChannel::MixerChannel (ViolentAudioProcessor& p, int generatorIdx)
     levelAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, ParamIDs::generatorLevel (generator), levelSlider);
 
+    addAndMakeVisible (panKnob);
+    panKnob.attachTo (processor.apvts, ParamIDs::generatorPan (generator));
+
     startTimerHz (20);
 }
 
@@ -25,6 +28,8 @@ void MixerChannel::resized()
     auto a = getLocalBounds().reduced (4, 4);
     nameLabel.setBounds (a.removeFromTop (16));
     a.removeFromTop (2);
+    panKnob.setBounds (a.removeFromBottom (52));
+    a.removeFromBottom (2);
     levelSlider.setBounds (a);
 }
 

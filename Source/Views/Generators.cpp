@@ -232,25 +232,6 @@ void GeneratorMidiRow::resized()
     }
 }
 
-//==============================================================================
-// Shared routing-arrow drawing — used between every stage of the signal
-// chain (MIDI modifier -> generator -> filters -> effects), whether the two
-// stages are inside the same component or, like the MIDI modifier and its
-// generator, separate sibling components.
-//==============================================================================
-static void drawGeneratorRoutingArrow (juce::Graphics& g, int width, int y)
-{
-    const float cx = (float) width * 0.5f;
-    const float halfLineLen = 60.0f;
-
-    g.setColour (ViolentColours::accent.withAlpha (0.35f));
-    g.drawLine (cx - halfLineLen, (float) y, cx + halfLineLen, (float) y, 1.0f);
-
-    juce::Path arrow;
-    arrow.addTriangle (cx - 5.0f, (float) y - 4.0f, cx + 5.0f, (float) y - 4.0f, cx, (float) y + 4.0f);
-    g.setColour (ViolentColours::accent);
-    g.fillPath (arrow);
-}
 
 //==============================================================================
 // GeneratorCard
@@ -298,15 +279,12 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     addChildComponent (sampleFileLabel);
 
     // Source knobs
-    for (auto* k : { &gainKnob, &octKnob, &semiKnob, &detKnob, &phaseKnob,
+    for (auto* k : { &gainKnob, &detKnob, &phaseKnob,
                      &pwKnob, &panKnob, &velKnob, &uniKnob, &uniSpreadKnob,
-                     &attKnob, &decKnob, &susKnob, &relKnob,
-                     &levelKnob, &generatorPan })
+                     &attKnob, &decKnob, &susKnob, &relKnob })
         addAndMakeVisible (*k);
 
     gainKnob      .attachTo (processor.apvts, ParamIDs::genSrcGain      (generator));
-    octKnob       .attachTo (processor.apvts, ParamIDs::genSrcOct       (generator));
-    semiKnob      .attachTo (processor.apvts, ParamIDs::genSrcSemi      (generator));
     detKnob       .attachTo (processor.apvts, ParamIDs::genSrcDet       (generator));
     phaseKnob     .attachTo (processor.apvts, ParamIDs::genSrcPhase     (generator));
     pwKnob        .attachTo (processor.apvts, ParamIDs::genSrcPW        (generator));
@@ -318,8 +296,6 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     decKnob       .attachTo (processor.apvts, ParamIDs::genSrcDec       (generator));
     susKnob       .attachTo (processor.apvts, ParamIDs::genSrcSus       (generator));
     relKnob       .attachTo (processor.apvts, ParamIDs::genSrcRel       (generator));
-    levelKnob     .attachTo (processor.apvts, ParamIDs::generatorLevel  (generator));
-    generatorPan  .attachTo (processor.apvts, ParamIDs::generatorPan    (generator));
 
     for (int b = 0; b < MAX_FX_BUSES; ++b)
     {
@@ -431,7 +407,7 @@ int GeneratorCard::preferredHeight() const noexcept
          + fxHeight
          + (gen.numFx < MAX_GENERATOR_FX ? 32 : 0)
          + (processor.numFxBuses > 0 ? 62 : 0)
-         + FOOTER_H + 8;
+         + 8;
 }
 
 void GeneratorCard::paint (juce::Graphics& g)
@@ -445,13 +421,6 @@ void GeneratorCard::paint (juce::Graphics& g)
     g.fillRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f);
     g.setColour (ViolentColours::overlay);
     g.drawRoundedRectangle (adsrBoxBounds.toFloat().reduced (2.0f), 5.0f, 1.0f);
-
-    drawRoutingArrow (g, effectArrowY);
-}
-
-void GeneratorCard::drawRoutingArrow (juce::Graphics& g, int y) const
-{
-    drawGeneratorRoutingArrow (g, getWidth(), y);
 }
 
 void GeneratorCard::resized()
@@ -478,10 +447,8 @@ void GeneratorCard::resized()
 
     // Source knobs row 1
     auto row1 = a.removeFromTop (58);
-    const int r1w = row1.getWidth() / 10;
+    const int r1w = row1.getWidth() / 8;
     gainKnob    .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
-    octKnob     .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
-    semiKnob    .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
     detKnob     .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
     phaseKnob   .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
     pwKnob      .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
@@ -490,17 +457,19 @@ void GeneratorCard::resized()
     uniKnob     .setBounds (row1.removeFromLeft (r1w).reduced (2, 1));
     uniSpreadKnob.setBounds (row1.reduced (2, 1));
 
-    a.removeFromTop (4);
+    a.removeFromTop (10);
 
-    // ADSR box — aligned to the same column grid as the source knobs above
-    auto adsr = a.removeFromTop (58);
-    adsrBoxBounds = adsr;
-    attKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
-    decKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
-    susKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
-    relKnob.setBounds (adsr.removeFromLeft (r1w).reduced (2, 1));
+    // ADSR box — padded inset so the knobs don't sit flush against the
+    // box border drawn in paint().
+    auto adsrOuter = a.removeFromTop (66);
+    adsrBoxBounds = adsrOuter;
+    auto adsrInner = adsrOuter.reduced (8, 6);
+    attKnob.setBounds (adsrInner.removeFromLeft (r1w).reduced (2, 1));
+    decKnob.setBounds (adsrInner.removeFromLeft (r1w).reduced (2, 1));
+    susKnob.setBounds (adsrInner.removeFromLeft (r1w).reduced (2, 1));
+    relKnob.setBounds (adsrInner.removeFromLeft (r1w).reduced (2, 1));
 
-    effectArrowY = a.removeFromTop (ARROW_H).getCentreY();
+    a.removeFromTop (ARROW_H);
 
     // FX (filters are just another selectable effect type in this chain)
     const auto& gen = processor.generators[(size_t) generator];
@@ -530,12 +499,6 @@ void GeneratorCard::resized()
     }
     for (int b = 0; b < MAX_FX_BUSES; ++b)
         sendKnobs[(size_t) b].setVisible (b < processor.numFxBuses);
-
-    // Footer: level + pan — aligned to the same column grid as everything above
-    a.removeFromTop (4);
-    levelKnob.setBounds (a.removeFromLeft (r1w).reduced (2, 1));
-    a.removeFromLeft (r1w * 4);
-    generatorPan.setBounds (a.removeFromLeft (r1w).reduced (2, 1));
 }
 
 //==============================================================================
@@ -605,12 +568,6 @@ int GeneratorUnit::preferredHeight() const noexcept
     return h + card.preferredHeight();
 }
 
-void GeneratorUnit::paint (juce::Graphics& g)
-{
-    if (processor.generators[(size_t) generator].numMidiMods > 0)
-        drawGeneratorRoutingArrow (g, getWidth(), arrowY);
-}
-
 void GeneratorUnit::resized()
 {
     auto a = getLocalBounds();
@@ -632,7 +589,7 @@ void GeneratorUnit::resized()
     addMidiBtn.setVisible (gen.numMidiMods < MAX_GENERATOR_MIDI_MODS);
 
     if (gen.numMidiMods > 0)
-        arrowY = a.removeFromTop (ARROW_H).getCentreY();
+        a.removeFromTop (ARROW_H);
 
     card.setBounds (a);
 }

@@ -23,6 +23,7 @@ private:
     juce::Label  nameLabel;
     juce::Slider levelSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAtt;
+    LabelledKnob panKnob { "Pan", ViolentColours::yellow };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerChannel)
 };
@@ -32,7 +33,7 @@ private:
 class MixerPanel : public juce::Component
 {
 public:
-    static constexpr int PANEL_H = 132;
+    static constexpr int PANEL_H = 172;
 
     explicit MixerPanel (ViolentAudioProcessor& p);
     void resized() override;

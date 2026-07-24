@@ -98,13 +98,13 @@ private:
 
 //==============================================================================
 /** One complete generator card: source + FX chain (filters are just another
-    selectable effect type) + level/pan. */
+    selectable effect type). Level/Pan live in the Mixer at the bottom of
+    the rack instead of being duplicated here. */
 class GeneratorCard : public juce::Component
 {
 public:
-    static constexpr int SOURCE_H  = 150;  // source section height
+    static constexpr int SOURCE_H  = 164;  // source section height
     static constexpr int HEADER_H  = 36;
-    static constexpr int FOOTER_H  = 44;
     static constexpr int ARROW_H   = 20;   // gap reserved for a routing arrow
 
     GeneratorCard (ViolentAudioProcessor& p, int generatorIdx);
@@ -143,8 +143,6 @@ private:
     int lastWaveformIndex = 0;
 
     LabelledKnob gainKnob    { "Gain",    ViolentColours::accent  };
-    LabelledKnob octKnob     { "Oct",     ViolentColours::text    };
-    LabelledKnob semiKnob    { "Semi",    ViolentColours::subtext };
     LabelledKnob detKnob     { "Detune",  ViolentColours::yellow  };
     LabelledKnob phaseKnob   { "Phase",   ViolentColours::teal    };
     LabelledKnob pwKnob      { "PW",      ViolentColours::blue    };
@@ -158,10 +156,6 @@ private:
     LabelledKnob decKnob { "Decay",   ViolentColours::teal  };
     LabelledKnob susKnob { "Sustain", ViolentColours::blue  };
     LabelledKnob relKnob { "Release", ViolentColours::red   };
-
-    // Footer: level + pan
-    LabelledKnob levelKnob { "Level", ViolentColours::accent };
-    LabelledKnob generatorPan { "Pan",   ViolentColours::yellow };
 
     // Sends to shared FX buses — one knob per bus slot; only the first
     // processor.numFxBuses of these are made visible/laid out.
@@ -185,11 +179,6 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     void openFilePicker();
 
-    // Y-centre (local coords) of the routing arrow drawn between the ADSR
-    // section and the FX chain, computed in resized() and used by paint().
-    int effectArrowY = 0;
-    void drawRoutingArrow (juce::Graphics&, int y) const;
-
     // Bounding box of the ADSR envelope, boxed and drawn in paint().
     juce::Rectangle<int> adsrBoxBounds;
 
@@ -205,8 +194,7 @@ private:
 /** One generator's full vertical slot in the rack: a chain of MIDI modifier
     stages (each a pitch shift, key shift, or arpeggiator) — added/removed
     just like filters/effects, since a generator can have zero or several —
-    plus the generator card itself, joined by a routing arrow whenever at
-    least one modifier is present. */
+    plus the generator card itself. */
 class GeneratorUnit : public juce::Component
 {
 public:
@@ -216,7 +204,6 @@ public:
     GeneratorUnit (ViolentAudioProcessor& p, int generatorIdx);
 
     void resized() override;
-    void paint (juce::Graphics&) override;
 
     int preferredHeight() const noexcept;
 
@@ -235,7 +222,6 @@ private:
     std::array<std::unique_ptr<GeneratorMidiRow>, MAX_GENERATOR_MIDI_MODS> midiRows;
     juce::TextButton addMidiBtn { "+ MIDI Modifier" };
     GeneratorCard card;
-    int arrowY = 0;
 
     void addMidiRow (int arrayIndex, MidiModType type);
 
