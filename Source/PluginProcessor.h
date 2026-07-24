@@ -106,10 +106,6 @@ public:
     {
         bool  enabled = true;
         juce::String name; // editable; UI defaults it to "Synth N"/"Sampler N"
-        // Per-generator accent colour, user-editable via the swatch in the card's
-        // top-right corner. Mirrors ViolentColours::accent's hex value as a
-        // default without depending on the Views/ layer (kept UI-agnostic here).
-        juce::Colour colour { 0xffff7a29 };
     };
     std::array<GeneratorState, MAX_GENERATORS> generators;
 

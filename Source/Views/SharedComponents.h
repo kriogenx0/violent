@@ -67,11 +67,6 @@ private:
 class DeleteButton : public juce::TextButton
 {
 public:
-    // Re-themes the glyph — used by GeneratorCard whose accent colour is
-    // user-editable at runtime. Defaults to red (a deliberate "destructive
-    // action" colour) everywhere else.
-    void setGlyphColour (juce::Colour c) noexcept { glyphColour = c; repaint(); }
-
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
     {
         getLookAndFeel().drawButtonBackground (g, *this,
@@ -79,39 +74,10 @@ public:
 
         auto b = getLocalBounds().toFloat().withSizeKeepingCentre (
             juce::jmin (getWidth(), getHeight()) * 0.4f, juce::jmin (getWidth(), getHeight()) * 0.4f);
-        g.setColour (glyphColour);
+        g.setColour (ViolentColours::red);
         g.drawLine (b.getX(), b.getY(), b.getRight(), b.getBottom(), 1.8f);
         g.drawLine (b.getX(), b.getBottom(), b.getRight(), b.getY(), 1.8f);
     }
-
-private:
-    juce::Colour glyphColour { ViolentColours::red };
-};
-
-//==============================================================================
-/** A small rounded-rect swatch showing a colour; clicking it opens a colour
-    picker to change it. Used in the top-right corner of each generator card. */
-class ColourSwatchButton : public juce::Component
-{
-public:
-    std::function<void (juce::Colour)> onColourChanged;
-
-    void setColour (juce::Colour c) noexcept { swatch = c; repaint(); }
-    juce::Colour getColour() const noexcept { return swatch; }
-
-    void paint (juce::Graphics& g) override
-    {
-        auto b = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (swatch);
-        g.fillRoundedRectangle (b, 4.0f);
-        g.setColour (ViolentColours::overlay);
-        g.drawRoundedRectangle (b, 4.0f, 1.0f);
-    }
-
-    void mouseDown (const juce::MouseEvent&) override;
-
-private:
-    juce::Colour swatch { ViolentColours::accent };
 };
 
 //==============================================================================
@@ -292,13 +258,9 @@ public:
             const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, ring[(size_t) ringIdx]) * plot.getHeight() * 0.5f;
             if (first) { path.startNewSubPath (x, y); first = false; } else path.lineTo (x, y);
         }
-        g.setColour (traceColour);
+        g.setColour (ViolentColours::accent);
         g.strokePath (path, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved));
     }
-
-    // Re-themes the trace colour — used by GeneratorCard whose accent
-    // colour is user-editable at runtime.
-    void setAccentColour (juce::Colour c) noexcept { traceColour = c; repaint(); }
 
 private:
     void timerCallback() override { repaint(); }
@@ -318,7 +280,6 @@ private:
     int generator;
     int windowIndex = 1; // 10ms by default
     juce::TextButton windowBtn;
-    juce::Colour traceColour { ViolentColours::accent };
 };
 
 //==============================================================================
@@ -343,15 +304,6 @@ public:
     // label blank until the user first drags the knob — so the label is set
     // explicitly here rather than relying on that notification.
     void attachTo (juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID);
-
-    // Re-themes the knob's fill colour after construction — used by owners
-    // like GeneratorCard whose accent colour is user-editable at runtime.
-    void setAccentColour (juce::Colour c)
-    {
-        knobColour = c;
-        slider.setColour (juce::Slider::rotarySliderFillColourId, c);
-        repaint();
-    }
 
 private:
     juce::Colour knobColour;

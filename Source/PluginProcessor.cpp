@@ -922,8 +922,7 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
     for (int s = 0; s < MAX_GENERATORS; ++s)
     {
         const auto& gen = generators[(size_t) s];
-        xml->setAttribute ("gen_" + juce::String(s) + "_name",   gen.name);
-        xml->setAttribute ("gen_" + juce::String(s) + "_colour", gen.colour.toString());
+        xml->setAttribute ("gen_" + juce::String(s) + "_name", gen.name);
 
         // Sample path for sample-mode generators
         juce::SpinLock::ScopedTryLockType tryLock (sampler.modules[(size_t) s].lock);
@@ -970,10 +969,7 @@ void ViolentAudioProcessor::restoreStateFromXml (const juce::XmlElement& xml)
     for (int s = 0; s < MAX_GENERATORS; ++s)
     {
         auto& gen = generators[(size_t) s];
-        gen.name  = xml.getStringAttribute ("gen_" + juce::String(s) + "_name");
-        const juce::String colStr = xml.getStringAttribute ("gen_" + juce::String(s) + "_colour");
-        if (colStr.isNotEmpty())
-            gen.colour = juce::Colour::fromString (colStr);
+        gen.name = xml.getStringAttribute ("gen_" + juce::String(s) + "_name");
 
         const juce::String path = xml.getStringAttribute ("gen_" + juce::String(s) + "_samplepath");
         if (path.isNotEmpty())
@@ -1143,8 +1139,6 @@ void ViolentAudioProcessor::randomizeAll()
         randF (ParamIDs::genSrcRel (s));
         randF (ParamIDs::generatorLevel (s));
         randF (ParamIDs::generatorPan   (s));
-
-        generators[(size_t) s].colour = juce::Colour::fromHSV (rng.nextFloat(), 0.55f, 0.85f, 1.0f);
     }
 
     // Shared Effect Components — keeps each one's existing type, randomizes

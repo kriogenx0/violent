@@ -40,10 +40,6 @@ public:
     EffectPanel& getEffectPanel() { return effectPanel; }
     MixerPanel& getMixerPanel() { return mixerPanel; }
 
-    // Called after Randomize changes generator colours (plain UI-owned
-    // state, not APVTS parameters, so nothing else pushes this update).
-    void refreshGeneratorColours() { generatorPanel.refreshColours(); }
-
 private:
     ViolentAudioProcessor& processor;
 

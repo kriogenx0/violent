@@ -29,15 +29,6 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     nameLabel.onTextChange = [this] { processor.generators[(size_t) generator].name = nameLabel.getText(); };
     addAndMakeVisible (nameLabel);
 
-    colourBtn.setColour (gen.colour);
-    colourBtn.onColourChanged = [this] (juce::Colour c)
-    {
-        processor.generators[(size_t) generator].colour = c;
-        applyAccentColour (c);
-        repaint();
-    };
-    addAndMakeVisible (colourBtn);
-
     addAndMakeVisible (waveformView);
 
     // Source type
@@ -110,24 +101,9 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
         resized();
     };
     srcTypeBox.onChange();
-
-    applyAccentColour (gen.colour);
 }
 
 GeneratorCard::~GeneratorCard() {}
-
-void GeneratorCard::applyAccentColour (juce::Colour c)
-{
-    for (auto* k : { &gainKnob, &panKnob, &velKnob,
-                     &detKnob, &phaseKnob, &pwKnob, &uniKnob, &uniSpreadKnob,
-                     &attKnob, &decKnob, &susKnob, &relKnob })
-        k->setAccentColour (c);
-    waveformView.setAccentColour (c);
-
-    removeBtn.setGlyphColour (c);
-    for (juce::Button* b : { (juce::Button*) &enableBtn, (juce::Button*) &synthModeBtn, (juce::Button*) &samplerModeBtn })
-        b->setColour (juce::TextButton::buttonOnColourId, c);
-}
 
 void GeneratorCard::openFilePicker()
 {
@@ -155,11 +131,9 @@ int GeneratorCard::preferredHeight() const noexcept
 
 void GeneratorCard::paint (juce::Graphics& g)
 {
-    const auto accent = processor.generators[(size_t) generator].colour;
-
     g.setColour (ViolentColours::overlay);
     g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f);
-    g.setColour (accent.withAlpha (0.6f));
+    g.setColour (ViolentColours::accent.withAlpha (0.6f));
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f, 1.5f);
 
     g.setColour (ViolentColours::surface);
@@ -174,9 +148,8 @@ void GeneratorCard::resized()
 {
     auto a = getLocalBounds().reduced (6, 4);
 
-    // Header — top-left: delete/enable/name; top-right: colour swatch
+    // Header — top-left: delete/enable/name
     auto hdr = a.removeFromTop (HEADER_H);
-    colourBtn.setBounds (hdr.removeFromRight (28).reduced (2, 6));
     removeBtn.setBounds (hdr.removeFromLeft (28).withSizeKeepingCentre (20, 20));
     enableBtn.setBounds (hdr.removeFromLeft (36).reduced (2, 6));
     nameLabel.setBounds (hdr.removeFromLeft (100).reduced (4, 6));

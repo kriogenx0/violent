@@ -257,48 +257,6 @@ void ViolentUI::timerCallback()
 }
 
 //==============================================================================
-// ColourSwatchButton
-//==============================================================================
-namespace
-{
-    class ColourPickerContent : public juce::Component, private juce::ChangeListener
-    {
-    public:
-        ColourPickerContent (juce::Colour initial, std::function<void (juce::Colour)> cb)
-            : onChange (std::move (cb))
-        {
-            selector.setCurrentColour (initial, juce::dontSendNotification);
-            selector.addChangeListener (this);
-            addAndMakeVisible (selector);
-            setSize (240, 300);
-        }
-
-        void resized() override { selector.setBounds (getLocalBounds()); }
-
-    private:
-        void changeListenerCallback (juce::ChangeBroadcaster*) override
-        {
-            if (onChange) onChange (selector.getCurrentColour());
-        }
-
-        juce::ColourSelector selector { juce::ColourSelector::showColourAtTop
-                                       | juce::ColourSelector::showSliders
-                                       | juce::ColourSelector::showColourspace };
-        std::function<void (juce::Colour)> onChange;
-    };
-}
-
-void ColourSwatchButton::mouseDown (const juce::MouseEvent&)
-{
-    auto content = std::make_unique<ColourPickerContent> (swatch, [this] (juce::Colour c)
-    {
-        setColour (c);
-        if (onColourChanged) onColourChanged (c);
-    });
-    juce::CallOutBox::launchAsynchronously (std::move (content), getScreenBounds(), nullptr);
-}
-
-//==============================================================================
 // LabelledKnob
 //==============================================================================
 LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)

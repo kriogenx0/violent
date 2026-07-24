@@ -31,12 +31,11 @@ public:
 
     void runTest() override
     {
-        beginTest ("State XML round-trips generator name, colour, and source type");
+        beginTest ("State XML round-trips generator name and source type");
         {
             ViolentAudioProcessor writer;
             setChoice (writer, ParamIDs::genSrcType (0), 2); // Square
             writer.generators[0].name = "My Synth";
-            writer.generators[0].colour = juce::Colour (0xff112233);
 
             auto xml = writer.createStateXml();
             expect (xml != nullptr);
@@ -46,7 +45,6 @@ public:
 
             expectEquals (getChoice (reader, ParamIDs::genSrcType (0)), 2);
             expectEquals (reader.generators[0].name, juce::String ("My Synth"));
-            expect (reader.generators[0].colour == juce::Colour (0xff112233));
         }
 
         beginTest ("State XML round-trips Effect Components (type, name, enabled, routing)");

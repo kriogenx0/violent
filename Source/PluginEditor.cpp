@@ -66,7 +66,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (zoomLabel);
     zoomLabel.setVisible (false);
 
-    randomizeBtn.onClick = [this] { processor.randomizeAll(); rack.refreshGeneratorColours(); };
+    randomizeBtn.onClick = [this] { processor.randomizeAll(); };
     addAndMakeVisible (randomizeBtn);
 
     rack.onLayoutChanged = [this] { minimap.refreshFromState(); updateHeight(); };
