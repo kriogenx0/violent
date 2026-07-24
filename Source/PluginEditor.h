@@ -17,8 +17,6 @@ public:
 
 private:
     static constexpr int HEADER_H = 52;
-    // Content taller than this scrolls instead of growing the window further.
-    static constexpr int MAX_WINDOW_H = 800;
 
     ViolentAudioProcessor& processor;
     ViolentUI laf;
@@ -26,7 +24,7 @@ private:
     ScalableRackComponent rack;
     RackScaler rackScaler { rack };
     juce::Viewport rackViewport;
-    NavPanel navPanel;
+    Minimap minimap;
     juce::Viewport navViewport;
 
     LevelMeter  meter;

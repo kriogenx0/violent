@@ -246,6 +246,48 @@ void ViolentUI::timerCallback()
 }
 
 //==============================================================================
+// ColourSwatchButton
+//==============================================================================
+namespace
+{
+    class ColourPickerContent : public juce::Component, private juce::ChangeListener
+    {
+    public:
+        ColourPickerContent (juce::Colour initial, std::function<void (juce::Colour)> cb)
+            : onChange (std::move (cb))
+        {
+            selector.setCurrentColour (initial, juce::dontSendNotification);
+            selector.addChangeListener (this);
+            addAndMakeVisible (selector);
+            setSize (240, 300);
+        }
+
+        void resized() override { selector.setBounds (getLocalBounds()); }
+
+    private:
+        void changeListenerCallback (juce::ChangeBroadcaster*) override
+        {
+            if (onChange) onChange (selector.getCurrentColour());
+        }
+
+        juce::ColourSelector selector { juce::ColourSelector::showColourAtTop
+                                       | juce::ColourSelector::showSliders
+                                       | juce::ColourSelector::showColourspace };
+        std::function<void (juce::Colour)> onChange;
+    };
+}
+
+void ColourSwatchButton::mouseDown (const juce::MouseEvent&)
+{
+    auto content = std::make_unique<ColourPickerContent> (swatch, [this] (juce::Colour c)
+    {
+        setColour (c);
+        if (onColourChanged) onColourChanged (c);
+    });
+    juce::CallOutBox::launchAsynchronously (std::move (content), getScreenBounds(), nullptr);
+}
+
+//==============================================================================
 // LabelledKnob
 //==============================================================================
 LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)
@@ -255,6 +297,7 @@ LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)
     slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     slider.setColour (juce::Slider::rotarySliderFillColourId, colour);
     slider.setRepaintsOnMouseActivity (true);
+    slider.setScrollWheelEnabled (false);
     addAndMakeVisible (slider);
 
     nameLabel.setText (name, juce::dontSendNotification);
@@ -310,43 +353,3 @@ void LevelMeter::paint (juce::Graphics& g)
     drawBar (b.getX() + w + gap, peakR);
 }
 
-//==============================================================================
-// FilterControlsBlock
-//==============================================================================
-FilterControlsBlock::FilterControlsBlock (juce::AudioProcessorValueTreeState& apvts, const juce::String& name,
-                                           const juce::String& typeParamID,
-                                           const juce::String& cutoffParamID,
-                                           const juce::String& resParamID)
-    : typeSelector (apvts, typeParamID),
-      responseView (apvts, typeParamID, cutoffParamID, resParamID)
-{
-    nameLabel.setText (name, juce::dontSendNotification);
-    nameLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
-    addAndMakeVisible (nameLabel);
-
-    addAndMakeVisible (removeBtn);
-    removeBtn.onClick = [this] { if (onRemove) onRemove(); };
-
-    addAndMakeVisible (typeSelector);
-
-    for (auto* k : { &cutoffKnob, &resKnob }) addAndMakeVisible (*k);
-    addAndMakeVisible (responseView);
-
-    cutoffKnob.attachTo (apvts, cutoffParamID);
-    resKnob   .attachTo (apvts, resParamID);
-}
-
-void FilterControlsBlock::resized()
-{
-    auto a = getLocalBounds().reduced (4, 3);
-    auto top = a.removeFromTop (40);
-    removeBtn   .setBounds (top.removeFromLeft  (28).withSizeKeepingCentre (20, 20));
-    nameLabel   .setBounds (top.removeFromLeft  (60));
-    typeSelector.setBounds (top.removeFromLeft  (160).reduced (2, 4));
-    const int kw = top.getWidth() / 2;
-    cutoffKnob.setBounds (top.removeFromLeft (kw).reduced (3, 2));
-    resKnob   .setBounds (top.reduced (3, 2));
-
-    a.removeFromTop (2);
-    responseView.setBounds (a);
-}

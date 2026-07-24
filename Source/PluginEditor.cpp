@@ -4,7 +4,7 @@
 // ViolentAudioProcessorEditor
 //==============================================================================
 ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor& p)
-    : AudioProcessorEditor (p), processor (p), rack (p), navPanel (p, rack, rackScaler, rackViewport)
+    : AudioProcessorEditor (p), processor (p), rack (p), minimap (p, rack, rackScaler, rackViewport)
 {
     setLookAndFeel (&laf);
     // Width is fixed (only the zoom buttons change it, not dragging or the
@@ -17,7 +17,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     rackViewport.setScrollBarsShown (true, false);
     addAndMakeVisible (rackViewport);
 
-    navViewport.setViewedComponent (&navPanel, false);
+    navViewport.setViewedComponent (&minimap, false);
     navViewport.setScrollBarsShown (true, false);
     addAndMakeVisible (navViewport);
 
@@ -35,6 +35,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     for (const auto& t : { "Arpeggios", "Low Notes", "Long Single Notes", "Chords" })
         previewPatternBox.addItem (t, previewPatternBox.getNumItems() + 1);
     previewPatternBox.setRepaintsOnMouseActivity (true);
+    previewPatternBox.setScrollWheelEnabled (false);
     previewPatternBox.setSelectedItemIndex (0, juce::dontSendNotification);
     previewPatternBox.onChange = [this]
     {
@@ -43,6 +44,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (previewPatternBox);
 
     presetBox.setRepaintsOnMouseActivity (true);
+    presetBox.setScrollWheelEnabled (false);
     presetBox.setTextWhenNothingSelected ("Select preset...");
     presetBox.setTextWhenNoChoicesAvailable ("No presets");
     presetBox.onChange = [this] { loadSelectedPreset(); };
@@ -64,10 +66,10 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (zoomLabel);
     zoomLabel.setVisible (false);
 
-    randomizeBtn.onClick = [this] { processor.randomizeAll(); };
+    randomizeBtn.onClick = [this] { processor.randomizeAll(); rack.refreshGeneratorColours(); };
     addAndMakeVisible (randomizeBtn);
 
-    rack.onLayoutChanged = [this] { navPanel.refreshFromState(); updateHeight(); };
+    rack.onLayoutChanged = [this] { minimap.refreshFromState(); updateHeight(); };
 
     updateHeight();
 }
@@ -82,12 +84,15 @@ void ViolentAudioProcessorEditor::updateHeight()
 {
     rackScaler.updateLayout (uiScale);
 
-    const int newW = NavPanel::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
-    const int newH = juce::jmin (MAX_WINDOW_H, HEADER_H + rackScaler.getHeight());
+    const int newW = Minimap::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
 
-    // Lock width at the current zoom level; leave height free so the user can
-    // drag-resize or hit the native maximize button to see more of the rack
-    // without scrolling, beyond the auto-fit height computed above.
+    // Always fill the available screen height (width stays locked at the
+    // current zoom level) so the window opens, and stays, maximized
+    // vertically rather than shrinking to fit the rack's content — content
+    // taller than the display still scrolls via the rack/nav viewports.
+    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+    const int newH = display != nullptr ? display->userArea.getHeight() : HEADER_H + rackScaler.getHeight();
+
     setResizeLimits (newW, 200, newW, 100000);
 
     if (newW == getWidth() && newH == getHeight())
@@ -137,7 +142,7 @@ void ViolentAudioProcessorEditor::loadSelectedPreset()
     if (processor.loadPreset (name))
     {
         rack.refreshFromState();
-        navPanel.refreshFromState();
+        minimap.refreshFromState();
         updateHeight();
     }
 }
@@ -196,6 +201,6 @@ void ViolentAudioProcessorEditor::resized()
 
     randomizeBtn.setBounds (zoomLabel.getRight() + 16, 12, 90, 26);
 
-    navViewport.setBounds (0, HEADER_H, NavPanel::WIDTH, getHeight() - HEADER_H);
-    rackViewport.setBounds (NavPanel::WIDTH, HEADER_H, getWidth() - NavPanel::WIDTH, getHeight() - HEADER_H);
+    navViewport.setBounds (0, HEADER_H, Minimap::WIDTH, getHeight() - HEADER_H);
+    rackViewport.setBounds (Minimap::WIDTH, HEADER_H, getWidth() - Minimap::WIDTH, getHeight() - HEADER_H);
 }

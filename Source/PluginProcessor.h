@@ -9,7 +9,6 @@
 #include "SoundProcessing/Effects.h"
 
 static constexpr int NUM_EQ_BANDS = 10;
-static constexpr int MAX_MASTER_FILTERS = 4;
 
 //==============================================================================
 namespace ParamIDs
@@ -44,11 +43,6 @@ namespace ParamIDs
     static constexpr auto EQ_BAND_7 = "eq_band_7";
     static constexpr auto EQ_BAND_8 = "eq_band_8";
     static constexpr auto EQ_BAND_9 = "eq_band_9";
-
-    // ---------- Master filters (applied last, after all generators) ----------
-    inline juce::String masterFltType (int f) { return "mflt_" + juce::String (f) + "_type"; }
-    inline juce::String masterFltCut  (int f) { return "mflt_" + juce::String (f) + "_cut"; }
-    inline juce::String masterFltRes  (int f) { return "mflt_" + juce::String (f) + "_res"; }
 }
 
 //==============================================================================
@@ -110,43 +104,52 @@ public:
 
     struct GeneratorState
     {
-        bool  enabled      = true;
-        int   numFx        = 0;
-        std::array<FxType, MAX_GENERATOR_FX> fxTypes {};
-        int   numMidiMods  = 0;
-        std::array<MidiModType, MAX_GENERATOR_MIDI_MODS> midiModTypes {};
+        bool  enabled = true;
+        juce::String name; // editable; UI defaults it to "Synth N"/"Sampler N"
+        // Per-generator accent colour, user-editable via the swatch in the card's
+        // top-right corner. Mirrors ViolentColours::accent's hex value as a
+        // default without depending on the Views/ layer (kept UI-agnostic here).
+        juce::Colour colour { 0xffff7a29 };
     };
     std::array<GeneratorState, MAX_GENERATORS> generators;
 
     // -----------------------------------------------------------------------
-    // Master filters — applied last, after every generator's own filters/FX.
-    // Each one sums a chosen subset of generators, filters that sum, and
-    // adds it to the master bus; generators not routed to any master filter
-    // are mixed straight through, unfiltered.
+    // MIDI Modifier Components — a shared pool, each one routed to whichever
+    // generators it applies to (like Effects below), rather than being
+    // owned by a single generator.
     // -----------------------------------------------------------------------
-    struct MasterFilterState
+    struct MidiModifierComponent
     {
+        juce::String name;
+        MidiModType type = MidiModType::PitchShift;
         bool enabled = true;
         std::array<bool, MAX_GENERATORS> routing {};
     };
-    int numMasterFilters = 0;
-    std::array<MasterFilterState, MAX_MASTER_FILTERS> masterFilters;
+    int numMidiModifiers = 0;
+    std::array<MidiModifierComponent, MAX_MIDI_MODIFIERS> midiModifiers;
 
     // -----------------------------------------------------------------------
-    // Shared FX buses — an alternative routing path alongside each
-    // generator's own private FX chain: any generator can send a portion of
-    // its (post-FX) signal into any bus via a per-generator/per-bus send
-    // level, each bus runs a single chosen effect, and the result is mixed
-    // additively into the master bus.
+    // Effect Components (Filter is just one selectable type, not a separate
+    // concept) — a shared pool; each one sums whichever generators are
+    // routed to it, processes that sum, and mixes the result additively into
+    // the master bus. Generators not routed to any effect mix straight
+    // through, unfiltered/unprocessed.
     // -----------------------------------------------------------------------
-    int numFxBuses = 0;
-    std::array<FxType, MAX_FX_BUSES> fxBusTypes {};
+    struct EffectComponent
+    {
+        juce::String name;
+        FxType type = FxType::None;
+        bool enabled = true;
+        std::array<bool, MAX_GENERATORS> routing {};
+    };
+    int numEffects = 0;
+    std::array<EffectComponent, MAX_EFFECTS> effects;
 
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
     std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
 
-    // --- Live waveform (raw source output, before filters/FX, for the UI scope) ---
+    // --- Live waveform (raw source output, before effects, for the UI scope) ---
     // Each generator's raw output rolls continuously into a ring buffer sized
     // for the largest option below; the UI reads back however many of the
     // most recent samples its own time-window setting calls for, so a single
@@ -169,11 +172,10 @@ public:
     void loadSample (int slotIndex, const juce::File& file);
 
     // Randomizes every active generator's source/synth settings, plus the
-    // params of every existing FX slot (generator chains, shared FX buses,
-    // and master filters) — keeping each slot's chosen type as-is and only
-    // randomizing the sub-params that type actually uses. Doesn't touch
-    // structure (generator/FX/MIDI-modifier counts or types) or MIDI
-    // modifiers/sends/EQ.
+    // params of every existing Effect Component — keeping each one's chosen
+    // type as-is and only randomizing the sub-params that type actually
+    // uses. Doesn't touch structure (counts, types, or routing) or MIDI
+    // modifiers/EQ.
     void randomizeAll();
 
 private:
@@ -188,34 +190,25 @@ private:
     // -----------------------------------------------------------------------
     // DSP state — one copy per generator. The individual signal-processor
     // types (OscSlot/FxSlotDSP/...) live under Source/SoundProcessing/; this
-    // struct is just the per-generator bookkeeping of which instances belong
-    // to which generator, owned by the processor as the orchestrator.
+    // struct is just the per-generator bookkeeping owned by the processor
+    // as the orchestrator. Generators no longer own any FX of their own —
+    // all effects processing happens in processEffects() below.
     // -----------------------------------------------------------------------
     struct GeneratorDSP
     {
         OscSlot osc;
         float level = 1.0f, pan = 0.0f;
-        std::array<float, MAX_FX_BUSES> sendGain {};
-
-        // Per-generator DSP objects
-        std::array<FxSlotDSP, MAX_GENERATOR_FX>      fxDSP;
-        juce::AudioBuffer<float>                   scratch;
+        juce::AudioBuffer<float> scratch;
         bool prepared = false;
 
         void prepare (const juce::dsp::ProcessSpec& spec)
         {
             scratch.setSize (2, (int) spec.maximumBlockSize, false, true, true);
-            for (auto& fx : fxDSP)   fx.prepare (spec);
             prepared = true;
         }
     };
 
     std::array<GeneratorDSP, MAX_GENERATORS> generatorDSP;
-
-    // Shared FX buses: one DSP instance (reusing the same per-effect-type
-    // processing as a generator's own FX slot) + one scratch buffer per bus.
-    std::array<FxSlotDSP, MAX_FX_BUSES>                fxBusDSP;
-    std::array<juce::AudioBuffer<float>, MAX_FX_BUSES> fxBusScratch;
 
     SynthEngine   synthEngine;
     SamplerEngine sampler;
@@ -226,28 +219,33 @@ private:
     void loadGeneratorParams (int s);
     void processMidi (const juce::MidiBuffer&);
     void renderGenerator (int s, juce::AudioBuffer<float>& master);
-    void applyGeneratorFx (int s, GeneratorDSP& dsp, const GeneratorState& gen, juce::AudioBuffer<float>& buf);
-    void mixGeneratorsToMaster (juce::AudioBuffer<float>& master);
-    void processFxBuses (juce::AudioBuffer<float>& master, int numSamples);
 
-    std::array<MasterFilterDSP, MAX_MASTER_FILTERS> masterFilterDSP;
-    juce::AudioBuffer<float> masterFilterScratch;
+    // Sums whichever generators are routed to each Effect Component,
+    // processes that sum through the effect's DSP, and mixes the result
+    // additively into master; generators claimed by no effect mix straight
+    // through. Replaces what used to be three separate mechanisms
+    // (per-generator FX chains, shared FX buses, and master filters).
+    void processEffects (juce::AudioBuffer<float>& master, int numSamples);
+
+    std::array<FxSlotDSP, MAX_EFFECTS> effectDSP;
+    juce::AudioBuffer<float> effectScratch;
 
 public:
     // -----------------------------------------------------------------------
-    // Per-generator MIDI modifier chain — transpose/octave/key-quantize are
-    // plain deterministic transforms recomputed on both note-on and note-off;
-    // the arpeggiator is its own tiny sample-accurate step sequencer per
-    // generator, driven from held (already-transformed) notes. Exposed
-    // publicly (rather than just private) since they're pure, const queries
-    // that unit tests exercise directly.
+    // Per-generator MIDI modifier application — transpose/octave/key-quantize
+    // are plain deterministic transforms recomputed on both note-on and
+    // note-off; the arpeggiator is its own tiny sample-accurate step
+    // sequencer per (modifier, generator) pair, driven from held
+    // (already-transformed) notes. Exposed publicly (rather than just
+    // private) since they're pure, const queries that unit tests exercise
+    // directly.
     int  applyMidiModifier (int generatorIdx, int note) const;
     bool isArpEnabled (int generatorIdx) const;
 
 private:
     void renderMidiModifiers (int numSamples);
 
-    std::array<MidiModifierState, MAX_GENERATORS> midiModState;
+    std::array<std::array<MidiModifierState, MAX_GENERATORS>, MAX_MIDI_MODIFIERS> midiModState;
 
     // -----------------------------------------------------------------------
     // MIDI preview sequencer — loops one of a few demo patterns (see

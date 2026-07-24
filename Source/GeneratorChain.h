@@ -3,11 +3,13 @@
 #include "FxChain.h"
 
 //==============================================================================
-static constexpr int MAX_GENERATORS          = 8;
-static constexpr int MAX_GENERATOR_FX        = 8;
-static constexpr int MAX_GENERATOR_MIDI_MODS = 4;
+static constexpr int MAX_GENERATORS      = 8;
+// A shared pool of MIDI Modifier Components — no longer owned by individual
+// generators. Each one is routed to whichever generators it applies to (see
+// ViolentAudioProcessor::MidiModifierComponent::routing).
+static constexpr int MAX_MIDI_MODIFIERS  = 8;
 
-// MIDI modifier types — a generator can chain several of these, in any order
+// MIDI modifier types
 enum class MidiModType { PitchShift = 0, KeyShift, Arp };
 static constexpr int NUM_MIDI_MOD_TYPES = 3;
 
@@ -50,13 +52,13 @@ namespace ParamIDs
     inline juce::String generatorLevel (int s) { return "gen_" + juce::String(s) + "_level"; }
     inline juce::String generatorPan   (int s) { return "gen_" + juce::String(s) + "_pan"; }
 
-    // MIDI modifiers — a chain of stages before the generator, slot m; which
-    // sub-params are actually used depends on that slot's chosen MidiModType
-    inline juce::String genMidiTranspose (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_transpose"; }
-    inline juce::String genMidiOctave    (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_octave"; }
-    inline juce::String genMidiKeyRoot   (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_key_root"; }
-    inline juce::String genMidiKeyScale  (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_key_scale"; }
-    inline juce::String genMidiArpRate   (int s, int m) { return "gen_" + juce::String(s) + "_midi" + juce::String(m) + "_arp_rate"; }
+    // MIDI Modifier Components, slot m — which sub-params are actually used
+    // depends on that slot's chosen MidiModType
+    inline juce::String midiModTranspose (int m) { return "mm" + juce::String(m) + "_transpose"; }
+    inline juce::String midiModOctave    (int m) { return "mm" + juce::String(m) + "_octave"; }
+    inline juce::String midiModKeyRoot   (int m) { return "mm" + juce::String(m) + "_key_root"; }
+    inline juce::String midiModKeyScale  (int m) { return "mm" + juce::String(m) + "_key_scale"; }
+    inline juce::String midiModArpRate   (int m) { return "mm" + juce::String(m) + "_arp_rate"; }
 
     // Source (unified oscillator/sampler) inside generator s
     inline juce::String genSrcType      (int s) { return "gen_" + juce::String(s) + "_src_type"; }
@@ -76,25 +78,4 @@ namespace ParamIDs
     inline juce::String genSrcDec (int s) { return "gen_" + juce::String(s) + "_src_dec"; }
     inline juce::String genSrcSus (int s) { return "gen_" + juce::String(s) + "_src_sus"; }
     inline juce::String genSrcRel (int s) { return "gen_" + juce::String(s) + "_src_rel"; }
-
-    // FX inside generator s, slot x
-    inline juce::String genFxDrive    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_drive"; }
-    inline juce::String genFxTone     (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_tone"; }
-    inline juce::String genFxLevel    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_level"; }
-    inline juce::String genFxDistType (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_dtype"; }
-    inline juce::String genFxThresh   (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_thresh"; }
-    inline juce::String genFxRatio    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_ratio"; }
-    inline juce::String genFxAttack   (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_attack"; }
-    inline juce::String genFxRelease  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_release"; }
-    inline juce::String genFxMakeup   (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_makeup"; }
-    inline juce::String genFxRoom     (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_room"; }
-    inline juce::String genFxDamping  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_damp"; }
-    inline juce::String genFxWet      (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_wet"; }
-    inline juce::String genFxWidth    (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_width"; }
-    inline juce::String genFxFilterType (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_ftype"; }
-    inline juce::String genFxFilterCut  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fcut"; }
-    inline juce::String genFxFilterRes  (int s, int x) { return "gen_" + juce::String(s) + "_fx" + juce::String(x) + "_fres"; }
-
-    // Send from generator s into shared FX bus b, 0..1
-    inline juce::String genSend (int s, int b) { return "gen_" + juce::String(s) + "_send" + juce::String(b); }
 }

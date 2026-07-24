@@ -31,12 +31,12 @@ public:
 
     void runTest() override
     {
-        beginTest ("State XML round-trips generator source type across processor instances");
+        beginTest ("State XML round-trips generator name, colour, and source type");
         {
             ViolentAudioProcessor writer;
             setChoice (writer, ParamIDs::genSrcType (0), 2); // Square
-            writer.generators[0].numFx = 1;
-            writer.generators[0].fxTypes[0] = FxType::Filter;
+            writer.generators[0].name = "My Synth";
+            writer.generators[0].colour = juce::Colour (0xff112233);
 
             auto xml = writer.createStateXml();
             expect (xml != nullptr);
@@ -45,16 +45,21 @@ public:
             reader.restoreStateFromXml (*xml);
 
             expectEquals (getChoice (reader, ParamIDs::genSrcType (0)), 2);
-            expectEquals (reader.generators[0].numFx, 1);
-            expect (reader.generators[0].fxTypes[0] == FxType::Filter);
+            expectEquals (reader.generators[0].name, juce::String ("My Synth"));
+            expect (reader.generators[0].colour == juce::Colour (0xff112233));
         }
 
-        beginTest ("State XML round-trips shared FX bus types and generator sends");
+        beginTest ("State XML round-trips Effect Components (type, name, enabled, routing)");
         {
             ViolentAudioProcessor writer;
-            writer.numFxBuses = 2;
-            writer.fxBusTypes[0] = FxType::Compressor;
-            writer.fxBusTypes[1] = FxType::Filter;
+            writer.numEffects = 2;
+            writer.effects[0].type = FxType::Compressor;
+            writer.effects[0].name = "Comp Bus";
+            writer.effects[0].enabled = false;
+            writer.effects[0].routing[0] = true;
+            writer.effects[0].routing[2] = true;
+            writer.effects[1].type = FxType::Filter;
+            writer.effects[1].name = "Filter Bus";
 
             auto xml = writer.createStateXml();
             expect (xml != nullptr);
@@ -62,9 +67,36 @@ public:
             ViolentAudioProcessor reader;
             reader.restoreStateFromXml (*xml);
 
-            expectEquals (reader.numFxBuses, 2);
-            expect (reader.fxBusTypes[0] == FxType::Compressor);
-            expect (reader.fxBusTypes[1] == FxType::Filter);
+            expectEquals (reader.numEffects, 2);
+            expect (reader.effects[0].type == FxType::Compressor);
+            expectEquals (reader.effects[0].name, juce::String ("Comp Bus"));
+            expect (! reader.effects[0].enabled);
+            expect (reader.effects[0].routing[0]);
+            expect (! reader.effects[0].routing[1]);
+            expect (reader.effects[0].routing[2]);
+            expect (reader.effects[1].type == FxType::Filter);
+        }
+
+        beginTest ("State XML round-trips MIDI Modifier Components (type, name, enabled, routing)");
+        {
+            ViolentAudioProcessor writer;
+            writer.numMidiModifiers = 1;
+            writer.midiModifiers[0].type = MidiModType::Arp;
+            writer.midiModifiers[0].name = "My Arp";
+            writer.midiModifiers[0].enabled = true;
+            writer.midiModifiers[0].routing[1] = true;
+
+            auto xml = writer.createStateXml();
+            expect (xml != nullptr);
+
+            ViolentAudioProcessor reader;
+            reader.restoreStateFromXml (*xml);
+
+            expectEquals (reader.numMidiModifiers, 1);
+            expect (reader.midiModifiers[0].type == MidiModType::Arp);
+            expectEquals (reader.midiModifiers[0].name, juce::String ("My Arp"));
+            expect (reader.midiModifiers[0].routing[1]);
+            expect (! reader.midiModifiers[0].routing[0]);
         }
 
         beginTest ("savePreset() writes a file and getPresetNames() lists it");

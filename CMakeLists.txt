@@ -59,10 +59,10 @@ target_sources(Violent
         Source/Views/SharedComponents.h
         Source/Views/Generators.cpp
         Source/Views/Generators.h
-        Source/Views/MasterFilterView.cpp
-        Source/Views/MasterFilterView.h
-        Source/Views/FxBusView.cpp
-        Source/Views/FxBusView.h
+        Source/Views/MidiModifierView.cpp
+        Source/Views/MidiModifierView.h
+        Source/Views/EffectView.cpp
+        Source/Views/EffectView.h
         Source/Views/MixerView.cpp
         Source/Views/MixerView.h
         Source/Views/RackView.cpp

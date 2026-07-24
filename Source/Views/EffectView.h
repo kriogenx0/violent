@@ -4,18 +4,19 @@
 #include "SharedComponents.h"
 
 //==============================================================================
-/** One shared FX bus: a single chosen effect that any generator can send a
-    portion of its (post-FX) signal into via a per-generator send knob (see
-    GeneratorCard's Sends row). An alternative routing path alongside each
-    generator's own private FX chain, not a replacement for it. */
-class FxBusRow : public juce::Component
+/** One shared Effect Component (Filter is just one selectable type here, not
+    a separate concept): a delete/enable/name header (top-left, like every
+    other component), its type-specific controls, and a routing row selecting
+    which generators sum into it — attached directly below its own controls. */
+class EffectRow : public juce::Component
 {
 public:
-    static constexpr int ROW_H        = 100;
-    static constexpr int FILTER_ROW_H = 150;
+    static constexpr int CONTROLS_H        = 84;
+    static constexpr int FILTER_CONTROLS_H = 134;
+    static constexpr int ROUTING_H         = 30;
 
-    FxBusRow (ViolentAudioProcessor& p, int busSlot);
-    ~FxBusRow() override;
+    EffectRow (ViolentAudioProcessor& p, int slot);
+    ~EffectRow() override;
 
     void resized() override;
     void paint (juce::Graphics&) override;
@@ -26,10 +27,11 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
-    int bus;
+    int slot;
 
-    TrashButton      removeBtn;
-    juce::Label      titleLabel;
+    DeleteButton        removeBtn;
+    juce::ToggleButton   enableBtn { "ON" };
+    juce::Label          nameLabel;
 
     LabelledKnob driveKnob  { "Drive",  ViolentColours::red    };
     LabelledKnob toneKnob   { "Tone",   ViolentColours::yellow };
@@ -52,22 +54,28 @@ private:
     LabelledKnob     filterResKnob    { "Resonance", ViolentColours::accent };
     FilterResponseView filterResponseView;
 
+    juce::Label routingLabel;
+    std::array<juce::TextButton, MAX_GENERATORS> routingBtns;
+
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     std::unique_ptr<CA> distTypeAtt;
 
     void setAllInvisible();
+    void updateEnabledLook();
     void layoutKnobs (std::initializer_list<LabelledKnob*>, juce::Rectangle<int>);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxBusRow)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectRow)
 };
 
 //==============================================================================
-/** Shared FX bus rack — generators send into these; each bus applies a
-    single chosen effect and mixes its result additively into the master. */
-class FxBusPanel : public juce::Component
+/** Shared Effect rack — sits after Generators/Modulators; each effect sums
+    whichever generators its routing row selects, processes that sum, and
+    mixes the result additively into master. Generators claimed by no effect
+    mix straight through dry. */
+class EffectPanel : public juce::Component
 {
 public:
-    explicit FxBusPanel (ViolentAudioProcessor& p);
+    explicit EffectPanel (ViolentAudioProcessor& p);
     void resized() override;
     void paint (juce::Graphics& g) override { g.fillAll (ViolentColours::background); }
 
@@ -78,19 +86,18 @@ public:
     // Tears down and rebuilds every row from scratch, e.g. after a preset load.
     void refreshFromState();
 
-    // For the nav panel.
-    int getNumBuses() const noexcept { return processor.numFxBuses; }
-    FxBusRow* getRow (int i) const { return rows[(size_t) i].get(); }
+    // For the minimap.
+    int getNumRows() const noexcept { return processor.numEffects; }
+    EffectRow* getRow (int i) const { return rows[(size_t) i].get(); }
 
 private:
     ViolentAudioProcessor& processor;
     juce::Label sectionLabel;
-    std::array<std::unique_ptr<FxBusRow>, MAX_FX_BUSES> rows;
-    juce::TextButton addBtn { "+ Add Bus" };
+    std::array<std::unique_ptr<EffectRow>, MAX_EFFECTS> rows;
+    juce::TextButton addBtn { "+ Add Effect" };
 
     void rebuild (bool forceRecreate = false);
     void addRow (int arrayIndex, FxType type);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxBusPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectPanel)
 };
-

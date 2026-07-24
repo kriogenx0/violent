@@ -62,8 +62,9 @@ private:
 
 //==============================================================================
 /** A standard button (same rounded-rect chrome as everything else) with a
-    drawn trash-can glyph instead of text — used for destructive "remove". */
-class TrashButton : public juce::TextButton
+    drawn "X" glyph instead of text — used for destructive "remove", in the
+    top-left corner of every component. */
+class DeleteButton : public juce::TextButton
 {
 public:
     void paintButton (juce::Graphics& g, bool highlighted, bool down) override
@@ -71,25 +72,38 @@ public:
         getLookAndFeel().drawButtonBackground (g, *this,
             findColour (juce::TextButton::buttonColourId), highlighted, down);
 
-        auto sq = getLocalBounds().toFloat().withSizeKeepingCentre (
-            juce::jmin (getWidth(), getHeight()) * 0.55f, juce::jmin (getWidth(), getHeight()) * 0.55f);
-        auto b = sq.reduced (sq.getWidth() * 0.24f, sq.getHeight() * 0.14f);
+        auto b = getLocalBounds().toFloat().withSizeKeepingCentre (
+            juce::jmin (getWidth(), getHeight()) * 0.4f, juce::jmin (getWidth(), getHeight()) * 0.4f);
         g.setColour (ViolentColours::red);
-
-        juce::Path p;
-        const float lidY = b.getY() + b.getHeight() * 0.16f;
-        p.addRoundedRectangle (b.getX() - 1.0f, lidY, b.getWidth() + 2.0f, b.getHeight() * 0.14f, 1.0f);
-        p.addRoundedRectangle (b.getX() + b.getWidth() * 0.28f, b.getY(),
-                                b.getWidth() * 0.44f, b.getHeight() * 0.16f, 1.0f);
-        const auto body = b.withY (lidY + b.getHeight() * 0.18f)
-                            .withHeight (b.getHeight() * 0.7f);
-        p.addRoundedRectangle (body, 1.2f);
-        g.strokePath (p, juce::PathStrokeType (1.1f));
-
-        for (float fx : { 0.32f, 0.5f, 0.68f })
-            g.drawLine (b.getX() + b.getWidth() * fx, body.getY() + 3.0f,
-                        b.getX() + b.getWidth() * fx, body.getBottom() - 3.0f, 0.9f);
+        g.drawLine (b.getX(), b.getY(), b.getRight(), b.getBottom(), 1.8f);
+        g.drawLine (b.getX(), b.getBottom(), b.getRight(), b.getY(), 1.8f);
     }
+};
+
+//==============================================================================
+/** A small rounded-rect swatch showing a colour; clicking it opens a colour
+    picker to change it. Used in the top-right corner of each generator card. */
+class ColourSwatchButton : public juce::Component
+{
+public:
+    std::function<void (juce::Colour)> onColourChanged;
+
+    void setColour (juce::Colour c) noexcept { swatch = c; repaint(); }
+    juce::Colour getColour() const noexcept { return swatch; }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (swatch);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b, 4.0f, 1.0f);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override;
+
+private:
+    juce::Colour swatch { ViolentColours::accent };
 };
 
 //==============================================================================
@@ -336,33 +350,4 @@ private:
     void timerCallback() override { repaint(); }
 };
 
-//==============================================================================
-/** The controls shared by every filter row: remove button, name, type
-    selector, cutoff/resonance knobs, and a live frequency-response view.
-    Used by MasterFilterRow (master chain, which adds its own routing row
-    below); per-generator filters are just another GeneratorFxCard type. */
-class FilterControlsBlock : public juce::Component
-{
-public:
-    static constexpr int HEIGHT = 108;
-
-    FilterControlsBlock (juce::AudioProcessorValueTreeState& apvts, const juce::String& name,
-                          const juce::String& typeParamID,
-                          const juce::String& cutoffParamID,
-                          const juce::String& resParamID);
-
-    void resized() override;
-
-    std::function<void()> onRemove;
-
-private:
-    TrashButton      removeBtn;
-    juce::Label      nameLabel;
-    FilterTypeSelector typeSelector;
-    LabelledKnob     cutoffKnob { "Cutoff",    ViolentColours::blue   };
-    LabelledKnob     resKnob    { "Resonance", ViolentColours::accent };
-    FilterResponseView responseView;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilterControlsBlock)
-};
 

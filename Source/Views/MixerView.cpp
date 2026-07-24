@@ -13,6 +13,7 @@ MixerChannel::MixerChannel (ViolentAudioProcessor& p, int generatorIdx)
 
     levelSlider.setSliderStyle (juce::Slider::LinearVertical);
     levelSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    levelSlider.setScrollWheelEnabled (false);
     addAndMakeVisible (levelSlider);
     levelAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         processor.apvts, ParamIDs::generatorLevel (generator), levelSlider);

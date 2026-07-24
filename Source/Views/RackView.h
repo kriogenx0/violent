@@ -1,18 +1,21 @@
 #pragma once
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
+#include "MidiModifierView.h"
 #include "Generators.h"
-#include "FxBusView.h"
-#include "MasterFilterView.h"
+#include "EffectView.h"
 #include "MixerView.h"
 
 //==============================================================================
-/** The generator rack, master filters, and mixer — laid out at a fixed logical
-    width (BASE_WIDTH). The owning editor scales this whole component uniformly
-    via a transform so '+'/'-' zoom controls can grow or shrink the rack without
-    every child needing to know about the current zoom level. The header toolbar
-    (title, presets, preview, meter) lives on the editor itself and stays fixed
-    size regardless of zoom, so it never collides with the zoom controls. */
+/** The whole rack, laid out at a fixed logical width (BASE_WIDTH), top to
+    bottom: MIDI Modifiers, Generators, (Phase 2: Modulators), Effects, then
+    the Mixer. Routing lives directly on each MIDI Modifier/Effect row rather
+    than as a separate router panel. The owning editor scales this whole
+    component uniformly via a transform so '+'/'-' zoom controls can grow or
+    shrink the rack without every child needing to know about the current
+    zoom level. The header toolbar (title, presets, preview, meter) lives on
+    the editor itself and stays fixed size regardless of zoom, so it never
+    collides with the zoom controls. */
 class ScalableRackComponent : public juce::Component
 {
 public:
@@ -27,21 +30,26 @@ public:
     // Tears every panel down and rebuilds it from processor state, e.g. after a preset load.
     void refreshFromState();
 
-    // Fired when preferredHeight() changes (generator/filter added or removed),
+    // Fired when preferredHeight() changes (a component added or removed),
     // so the owning editor can re-run its own zoom-aware sizing.
     std::function<void()> onLayoutChanged;
 
-    // For the nav panel.
+    // For the minimap.
+    MidiModifierPanel& getMidiModifierPanel() { return midiModifierPanel; }
     GeneratorPanel& getGeneratorPanel() { return generatorPanel; }
-    FxBusPanel& getFxBusPanel() { return fxBusPanel; }
-    MasterFilterPanel& getMasterFilterPanel() { return masterFilterPanel; }
+    EffectPanel& getEffectPanel() { return effectPanel; }
+    MixerPanel& getMixerPanel() { return mixerPanel; }
+
+    // Called after Randomize changes generator colours (plain UI-owned
+    // state, not APVTS parameters, so nothing else pushes this update).
+    void refreshGeneratorColours() { generatorPanel.refreshColours(); }
 
 private:
     ViolentAudioProcessor& processor;
 
+    MidiModifierPanel midiModifierPanel;
     GeneratorPanel generatorPanel;
-    FxBusPanel fxBusPanel;
-    MasterFilterPanel masterFilterPanel;
+    EffectPanel effectPanel;
     MixerPanel mixerPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScalableRackComponent)
@@ -74,16 +82,16 @@ private:
 };
 
 //==============================================================================
-/** Left-side outline of every module in the rack — MIDI modifiers,
-    generators, filters, and effects — labelled by type only. Clicking an
-    entry scrolls the rack viewport so that module comes into view. */
-class NavPanel : public juce::Component
+/** Left-side outline of every component in the rack — MIDI modifiers,
+    generators, effects, and the mixer — labelled by name. Clicking an entry
+    scrolls the rack viewport so that component comes into view. */
+class Minimap : public juce::Component
 {
 public:
     static constexpr int WIDTH = 132;
 
-    NavPanel (ViolentAudioProcessor& p, ScalableRackComponent& rack,
-              juce::Component& scrollSpace, juce::Viewport& viewport);
+    Minimap (ViolentAudioProcessor& p, ScalableRackComponent& rack,
+             juce::Component& scrollSpace, juce::Viewport& viewport);
 
     void resized() override;
     void paint (juce::Graphics& g) override;
@@ -108,6 +116,5 @@ private:
 
     void addEntry (const juce::String& label, juce::Component* target);
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NavPanel)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Minimap)
 };
-
