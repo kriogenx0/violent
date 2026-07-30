@@ -203,6 +203,12 @@ void EffectRow::resized()
 //==============================================================================
 // EffectPanel
 //==============================================================================
+namespace
+{
+    constexpr FxType kAddableFxTypes[EffectPanel::NUM_ADDABLE_FX_TYPES] =
+        { FxType::Distortion, FxType::Compressor, FxType::Gate, FxType::Reverb, FxType::Filter };
+}
+
 EffectPanel::EffectPanel (ViolentAudioProcessor& p) : processor (p)
 {
     sectionLabel.setText ("EFFECTS", juce::dontSendNotification);
@@ -210,31 +216,21 @@ EffectPanel::EffectPanel (ViolentAudioProcessor& p) : processor (p)
     sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     addAndMakeVisible (sectionLabel);
 
-    addAndMakeVisible (addBtn);
-    addBtn.onClick = [this]
+    for (int i = 0; i < NUM_ADDABLE_FX_TYPES; ++i)
     {
-        if (processor.numEffects >= MAX_EFFECTS) return;
-
-        juce::PopupMenu menu;
-        menu.addItem (1, "Distortion");
-        menu.addItem (2, "Compressor");
-        menu.addItem (3, "Gate");
-        menu.addItem (4, "Reverb");
-        menu.addItem (5, "Filter");
-
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (addBtn),
-            [this] (int result)
-            {
-                if (result == 0) return;
-                if (processor.numEffects >= MAX_EFFECTS) return;
-                const FxType types[] = { FxType::Distortion, FxType::Compressor,
-                                         FxType::Gate, FxType::Reverb, FxType::Filter };
-                const int x = processor.numEffects++;
-                processor.effects[(size_t) x].type = types[result - 1];
-                addRow (x, types[result - 1]);
-                if (onLayoutChanged) onLayoutChanged();
-            });
-    };
+        const auto type = kAddableFxTypes[i];
+        auto& btn = addTypeBtns[(size_t) i];
+        btn.setButtonText (juce::String ("+ ") + fxTypeName (type));
+        addAndMakeVisible (btn);
+        btn.onClick = [this, type]
+        {
+            if (processor.numEffects >= MAX_EFFECTS) return;
+            const int x = processor.numEffects++;
+            processor.effects[(size_t) x].type = type;
+            addRow (x, type);
+            if (onLayoutChanged) onLayoutChanged();
+        };
+    }
     rebuild();
 }
 
@@ -303,7 +299,15 @@ void EffectPanel::resized()
         rows[(size_t) x]->resized();
         a.removeFromTop (8);
     }
-    if (processor.numEffects < MAX_EFFECTS)
-        addBtn.setBounds (a.removeFromTop (32).reduced (4, 2));
-    addBtn.setVisible (processor.numEffects < MAX_EFFECTS);
+    const bool canAdd = processor.numEffects < MAX_EFFECTS;
+    if (canAdd)
+    {
+        auto row = a.removeFromTop (32).reduced (4, 2);
+        const int w = row.getWidth() / NUM_ADDABLE_FX_TYPES;
+        for (int i = 0; i < NUM_ADDABLE_FX_TYPES; ++i)
+            addTypeBtns[(size_t) i].setBounds (
+                (i < NUM_ADDABLE_FX_TYPES - 1 ? row.removeFromLeft (w) : row).reduced (2, 0));
+    }
+    for (auto& btn : addTypeBtns)
+        btn.setVisible (canAdd);
 }

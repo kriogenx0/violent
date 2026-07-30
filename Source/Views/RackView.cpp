@@ -4,28 +4,35 @@
 // ScalableRackComponent
 //==============================================================================
 ScalableRackComponent::ScalableRackComponent (ViolentAudioProcessor& p)
-    : processor (p), midiModifierPanel (p), generatorPanel (p), effectPanel (p), mixerPanel (p)
+    : processor (p), midiModifierPanel (p), generatorPanel (p), modulatorPanel (p), effectPanel (p),
+      mixerPanel (p), spectrumPanel (p)
 {
     addAndMakeVisible (midiModifierPanel);
     addAndMakeVisible (generatorPanel);
+    addAndMakeVisible (modulatorPanel);
     addAndMakeVisible (effectPanel);
     addAndMakeVisible (mixerPanel);
+    addAndMakeVisible (spectrumPanel);
 
     midiModifierPanel.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
     generatorPanel.onLayoutChanged = [this] { mixerPanel.rebuild(); if (onLayoutChanged) onLayoutChanged(); };
+    modulatorPanel.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
     effectPanel.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
+    spectrumPanel.onLayoutChanged = [this] { if (onLayoutChanged) onLayoutChanged(); };
 }
 
 int ScalableRackComponent::preferredHeight() const noexcept
 {
     return midiModifierPanel.preferredHeight() + generatorPanel.preferredHeight()
-         + effectPanel.preferredHeight() + MixerPanel::PANEL_H;
+         + modulatorPanel.preferredHeight() + effectPanel.preferredHeight()
+         + MixerPanel::PANEL_H + spectrumPanel.preferredHeight();
 }
 
 void ScalableRackComponent::refreshFromState()
 {
     midiModifierPanel.refreshFromState();
     generatorPanel.refreshFromState();
+    modulatorPanel.refreshFromState();
     effectPanel.refreshFromState();
     mixerPanel.rebuild();
     resized();
@@ -41,12 +48,20 @@ void ScalableRackComponent::resized()
     generatorPanel.setBounds (0, mmH, BASE_WIDTH, genH);
     generatorPanel.resized();
 
+    const int modH = modulatorPanel.preferredHeight();
+    modulatorPanel.setBounds (0, mmH + genH, BASE_WIDTH, modH);
+    modulatorPanel.resized();
+
     const int fxH = effectPanel.preferredHeight();
-    effectPanel.setBounds (0, mmH + genH, BASE_WIDTH, fxH);
+    effectPanel.setBounds (0, mmH + genH + modH, BASE_WIDTH, fxH);
     effectPanel.resized();
 
-    mixerPanel.setBounds (0, mmH + genH + fxH, BASE_WIDTH, MixerPanel::PANEL_H);
+    mixerPanel.setBounds (0, mmH + genH + modH + fxH, BASE_WIDTH, MixerPanel::PANEL_H);
     mixerPanel.resized();
+
+    const int specY = mmH + genH + modH + fxH + MixerPanel::PANEL_H;
+    spectrumPanel.setBounds (0, specY, BASE_WIDTH, spectrumPanel.preferredHeight());
+    spectrumPanel.resized();
 }
 
 //==============================================================================
@@ -85,11 +100,16 @@ void Minimap::refreshFromState()
     for (int g = 0; g < generatorPanel.getNumCards(); ++g)
         addEntry (generatorPanel.getCard (g)->getDisplayName(), generatorPanel.getCard (g));
 
+    auto& modulatorPanel = rack.getModulatorPanel();
+    for (int m = 0; m < modulatorPanel.getNumRows(); ++m)
+        addEntry (processor.modulators[(size_t) m].name, modulatorPanel.getRow (m));
+
     auto& effectPanel = rack.getEffectPanel();
     for (int x = 0; x < effectPanel.getNumRows(); ++x)
         addEntry (processor.effects[(size_t) x].name, effectPanel.getRow (x));
 
     addEntry ("Mixer", &rack.getMixerPanel());
+    addEntry ("Spectrum", &rack.getSpectrumPanel());
 
     setSize (WIDTH, preferredHeight());
     resized();

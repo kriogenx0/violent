@@ -157,6 +157,38 @@ ViolentAudioProcessor::createParameterLayout()
             NormalisableRange<float> (0.1f, 12.0f, 0.01f, 0.5f), 0.707f));
     }
 
+    // ---- Modulator Components (shared pool; Envelope or LFO source
+    // targeting any one modulatable parameter) ----
+    for (int m = 0; m < MAX_MODULATORS; ++m)
+    {
+        const String mn = " Modulator " + String (m + 1) + " ";
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modAmount (m), mn + "Amount",
+            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.5f));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modLfoRate (m), mn + "LFO Rate",
+            NormalisableRange<float> (0.02f, 20.0f, 0.01f, 0.3f), 1.0f,
+            AudioParameterFloatAttributes().withLabel ("Hz")));
+        params.push_back (std::make_unique<AudioParameterChoice> (
+            ParamIDs::modLfoShape (m), mn + "LFO Shape",
+            StringArray { "Sine", "Triangle", "Square", "Saw" }, 0));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modEnvAtt (m), mn + "Env Attack",
+            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.01f,
+            AudioParameterFloatAttributes().withLabel ("s")));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modEnvDec (m), mn + "Env Decay",
+            NormalisableRange<float> (0.001f, 4.0f, 0.001f, 0.3f), 0.1f,
+            AudioParameterFloatAttributes().withLabel ("s")));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modEnvSus (m), mn + "Env Sustain",
+            NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.7f));
+        params.push_back (std::make_unique<AudioParameterFloat> (
+            ParamIDs::modEnvRel (m), mn + "Env Release",
+            NormalisableRange<float> (0.001f, 8.0f, 0.001f, 0.3f), 0.3f,
+            AudioParameterFloatAttributes().withLabel ("s")));
+    }
+
     // ---- Global EQ ----
     params.push_back (std::make_unique<AudioParameterBool> (
         ParamIDs::EQ_ENABLED, "EQ Enabled", false));
@@ -283,21 +315,20 @@ void ViolentAudioProcessor::loadGeneratorParams (int s)
     auto& o    = dsp.osc;
     o.en          = gen.enabled;
     o.type        = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genSrcType (s))->load());
-    o.gainLin     = juce::Decibels::decibelsToGain (
-                        apvts.getRawParameterValue (ParamIDs::genSrcGain (s))->load());
+    o.gainLin     = juce::Decibels::decibelsToGain (getModulatedValue (ParamIDs::genSrcGain (s)));
     o.octave      = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genSrcOct  (s))->load());
     o.semitone    = static_cast<int> (apvts.getRawParameterValue (ParamIDs::genSrcSemi (s))->load());
-    o.detune      = apvts.getRawParameterValue (ParamIDs::genSrcDet       (s))->load();
-    o.phase       = apvts.getRawParameterValue (ParamIDs::genSrcPhase     (s))->load();
-    o.pulseWidth  = apvts.getRawParameterValue (ParamIDs::genSrcPW        (s))->load();
-    o.pan         = apvts.getRawParameterValue (ParamIDs::genSrcPan       (s))->load();
-    o.velSens     = apvts.getRawParameterValue (ParamIDs::genSrcVel       (s))->load();
+    o.detune      = getModulatedValue (ParamIDs::genSrcDet       (s));
+    o.phase       = getModulatedValue (ParamIDs::genSrcPhase     (s));
+    o.pulseWidth  = getModulatedValue (ParamIDs::genSrcPW        (s));
+    o.pan         = getModulatedValue (ParamIDs::genSrcPan       (s));
+    o.velSens     = getModulatedValue (ParamIDs::genSrcVel       (s));
     o.unisonVoices= static_cast<int> (apvts.getRawParameterValue (ParamIDs::genSrcUni (s))->load());
-    o.unisonSpread= apvts.getRawParameterValue (ParamIDs::genSrcUniSpread (s))->load();
-    o.att         = apvts.getRawParameterValue (ParamIDs::genSrcAtt (s))->load();
-    o.dec         = apvts.getRawParameterValue (ParamIDs::genSrcDec (s))->load();
-    o.sus         = apvts.getRawParameterValue (ParamIDs::genSrcSus (s))->load();
-    o.rel         = apvts.getRawParameterValue (ParamIDs::genSrcRel (s))->load();
+    o.unisonSpread= getModulatedValue (ParamIDs::genSrcUniSpread (s));
+    o.att         = getModulatedValue (ParamIDs::genSrcAtt (s));
+    o.dec         = getModulatedValue (ParamIDs::genSrcDec (s));
+    o.sus         = getModulatedValue (ParamIDs::genSrcSus (s));
+    o.rel         = getModulatedValue (ParamIDs::genSrcRel (s));
 }
 
 //==============================================================================
@@ -308,6 +339,9 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
         {
+            if (heldNoteCount++ == 0)
+                triggerModulatorEnvelopes (true);
+
             const int   rawNote = msg.getNoteNumber();
             const float vel     = msg.getFloatVelocity();
             for (int s = 0; s < numActiveGenerators; ++s)
@@ -338,6 +372,9 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
         }
         else if (msg.isNoteOff())
         {
+            if (heldNoteCount > 0 && --heldNoteCount == 0)
+                triggerModulatorEnvelopes (false);
+
             const int rawNote = msg.getNoteNumber();
             for (int s = 0; s < numActiveGenerators; ++s)
             {
@@ -365,6 +402,11 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
             for (auto& perModifier : midiModState)
                 for (auto& st : perModifier)
                     st.heldNotes.clear();
+            if (heldNoteCount != 0)
+            {
+                heldNoteCount = 0;
+                triggerModulatorEnvelopes (false);
+            }
         }
     }
 }
@@ -390,6 +432,131 @@ bool ViolentAudioProcessor::isArpEnabled (int s) const
             return true;
     }
     return false;
+}
+
+//==============================================================================
+float ViolentAudioProcessor::getModulatedValue (const juce::String& parameterID) const noexcept
+{
+    auto* raw = apvts.getRawParameterValue (parameterID);
+    if (raw == nullptr) return 0.0f;
+    const float base = raw->load();
+
+    float offset = 0.0f;
+    for (int m = 0; m < numModulators; ++m)
+    {
+        const auto& mod = modulators[(size_t) m];
+        if (! mod.enabled || mod.targetParamID != parameterID) continue;
+        const float amount = apvts.getRawParameterValue (ParamIDs::modAmount (m))->load();
+        offset += modulatorOutputs[(size_t) m] * amount;
+    }
+    if (offset == 0.0f) return base;
+
+    if (auto* param = apvts.getParameter (parameterID))
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (param))
+        {
+            const auto range = ranged->getNormalisableRange();
+            const float span = range.end - range.start;
+            return juce::jlimit (range.start, range.end, base + offset * span * 0.5f);
+        }
+    return base;
+}
+
+std::vector<std::pair<juce::String, juce::String>> ViolentAudioProcessor::getModulatableParameters() const
+{
+    std::vector<std::pair<juce::String, juce::String>> result;
+    for (auto* p : getParameters())
+    {
+        auto* floatParam = dynamic_cast<juce::AudioParameterFloat*> (p);
+        auto* withID = dynamic_cast<juce::AudioProcessorParameterWithID*> (p);
+        if (floatParam == nullptr || withID == nullptr) continue;
+
+        const auto& id = withID->paramID;
+        const bool isGeneratorSource = id.startsWith ("gen_") && id.contains ("_src_");
+        const bool isEffect = id.startsWith ("fx");
+        if (! isGeneratorSource && ! isEffect) continue;
+
+        result.push_back ({ id, p->getName (256).trim() });
+    }
+    return result;
+}
+
+//==============================================================================
+void ViolentAudioProcessor::triggerModulatorEnvelopes (bool noteOn) noexcept
+{
+    for (int m = 0; m < numModulators; ++m)
+    {
+        auto& mod = modulators[(size_t) m];
+        if (! mod.enabled || mod.sourceType != ModulatorSourceType::Envelope) continue;
+        modulatorState[(size_t) m].envStage = noteOn
+            ? ModulatorState::EnvStage::Attack
+            : ModulatorState::EnvStage::Release;
+    }
+}
+
+void ViolentAudioProcessor::renderModulators (int numSamples)
+{
+    const float dt = (float) numSamples / (float) juce::jmax (1.0, processSpec.sampleRate);
+
+    for (int m = 0; m < numModulators; ++m)
+    {
+        auto& mod = modulators[(size_t) m];
+        auto& st  = modulatorState[(size_t) m];
+        if (! mod.enabled)
+        {
+            modulatorOutputs[(size_t) m] = 0.0f;
+            continue;
+        }
+
+        if (mod.sourceType == ModulatorSourceType::LFO)
+        {
+            const float rate = apvts.getRawParameterValue (ParamIDs::modLfoRate (m))->load();
+            const auto shape = static_cast<LfoShape> (
+                (int) apvts.getRawParameterValue (ParamIDs::modLfoShape (m))->load());
+
+            st.lfoPhase += rate * dt;
+            st.lfoPhase -= std::floor (st.lfoPhase);
+
+            float v;
+            switch (shape)
+            {
+                case LfoShape::Triangle: v = 4.0f * std::abs (st.lfoPhase - 0.5f) - 1.0f; break;
+                case LfoShape::Square:   v = st.lfoPhase < 0.5f ? 1.0f : -1.0f; break;
+                case LfoShape::Saw:      v = 2.0f * st.lfoPhase - 1.0f; break;
+                default:                 v = std::sin (st.lfoPhase * juce::MathConstants<float>::twoPi); break;
+            }
+            modulatorOutputs[(size_t) m] = v;
+        }
+        else // Envelope
+        {
+            const float att = apvts.getRawParameterValue (ParamIDs::modEnvAtt (m))->load();
+            const float dec = apvts.getRawParameterValue (ParamIDs::modEnvDec (m))->load();
+            const float sus = apvts.getRawParameterValue (ParamIDs::modEnvSus (m))->load();
+            const float rel = apvts.getRawParameterValue (ParamIDs::modEnvRel (m))->load();
+
+            switch (st.envStage)
+            {
+                case ModulatorState::EnvStage::Attack:
+                    st.envLevel += dt / juce::jmax (0.001f, att);
+                    if (st.envLevel >= 1.0f) { st.envLevel = 1.0f; st.envStage = ModulatorState::EnvStage::Decay; }
+                    break;
+                case ModulatorState::EnvStage::Decay:
+                    st.envLevel -= dt * (1.0f - sus) / juce::jmax (0.001f, dec);
+                    if (st.envLevel <= sus) { st.envLevel = sus; st.envStage = ModulatorState::EnvStage::Sustain; }
+                    break;
+                case ModulatorState::EnvStage::Sustain:
+                    st.envLevel = sus;
+                    break;
+                case ModulatorState::EnvStage::Release:
+                    st.envLevel -= dt / juce::jmax (0.001f, rel);
+                    if (st.envLevel <= 0.0f) { st.envLevel = 0.0f; st.envStage = ModulatorState::EnvStage::Idle; }
+                    break;
+                default:
+                    st.envLevel = 0.0f;
+                    break;
+            }
+            modulatorOutputs[(size_t) m] = st.envLevel;
+        }
+    }
 }
 
 void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
@@ -742,10 +909,9 @@ void ViolentAudioProcessor::processEffects (juce::AudioBuffer<float>& master, in
         {
             case FxType::Distortion:
             {
-                const float drive = apvts.getRawParameterValue (ParamIDs::effectDrive    (x))->load();
-                const float level = juce::Decibels::decibelsToGain (
-                                        apvts.getRawParameterValue (ParamIDs::effectLevel (x))->load());
-                const float tone  = apvts.getRawParameterValue (ParamIDs::effectTone     (x))->load();
+                const float drive = getModulatedValue (ParamIDs::effectDrive (x));
+                const float level = juce::Decibels::decibelsToGain (getModulatedValue (ParamIDs::effectLevel (x)));
+                const float tone  = getModulatedValue (ParamIDs::effectTone (x));
                 const int   dtype = static_cast<int> (
                                         apvts.getRawParameterValue (ParamIDs::effectDistType (x))->load());
 
@@ -775,29 +941,29 @@ void ViolentAudioProcessor::processEffects (juce::AudioBuffer<float>& master, in
                 break;
             }
             case FxType::Compressor:
-                fxdsp.compressor.setThreshold (apvts.getRawParameterValue (ParamIDs::effectThresh  (x))->load());
-                fxdsp.compressor.setRatio     (apvts.getRawParameterValue (ParamIDs::effectRatio   (x))->load());
-                fxdsp.compressor.setAttack    (apvts.getRawParameterValue (ParamIDs::effectAttack  (x))->load());
-                fxdsp.compressor.setRelease   (apvts.getRawParameterValue (ParamIDs::effectRelease (x))->load());
-                fxdsp.makeup.setGainDecibels  (apvts.getRawParameterValue (ParamIDs::effectMakeup  (x))->load());
+                fxdsp.compressor.setThreshold (getModulatedValue (ParamIDs::effectThresh  (x)));
+                fxdsp.compressor.setRatio     (getModulatedValue (ParamIDs::effectRatio   (x)));
+                fxdsp.compressor.setAttack    (getModulatedValue (ParamIDs::effectAttack  (x)));
+                fxdsp.compressor.setRelease   (getModulatedValue (ParamIDs::effectRelease (x)));
+                fxdsp.makeup.setGainDecibels  (getModulatedValue (ParamIDs::effectMakeup  (x)));
                 fxdsp.compressor.process (ctx);
                 fxdsp.makeup.process (ctx);
                 break;
             case FxType::Gate:
-                fxdsp.gate.setThreshold (apvts.getRawParameterValue (ParamIDs::effectThresh  (x))->load());
-                fxdsp.gate.setRatio     (apvts.getRawParameterValue (ParamIDs::effectRatio   (x))->load());
-                fxdsp.gate.setAttack    (apvts.getRawParameterValue (ParamIDs::effectAttack  (x))->load());
-                fxdsp.gate.setRelease   (apvts.getRawParameterValue (ParamIDs::effectRelease (x))->load());
+                fxdsp.gate.setThreshold (getModulatedValue (ParamIDs::effectThresh  (x)));
+                fxdsp.gate.setRatio     (getModulatedValue (ParamIDs::effectRatio   (x)));
+                fxdsp.gate.setAttack    (getModulatedValue (ParamIDs::effectAttack  (x)));
+                fxdsp.gate.setRelease   (getModulatedValue (ParamIDs::effectRelease (x)));
                 fxdsp.gate.process (ctx);
                 break;
             case FxType::Reverb:
             {
                 juce::dsp::Reverb::Parameters p;
-                p.roomSize   = apvts.getRawParameterValue (ParamIDs::effectRoom    (x))->load();
-                p.damping    = apvts.getRawParameterValue (ParamIDs::effectDamping (x))->load();
-                p.wetLevel   = apvts.getRawParameterValue (ParamIDs::effectWet     (x))->load();
+                p.roomSize   = getModulatedValue (ParamIDs::effectRoom    (x));
+                p.damping    = getModulatedValue (ParamIDs::effectDamping (x));
+                p.wetLevel   = getModulatedValue (ParamIDs::effectWet     (x));
                 p.dryLevel   = 1.0f - p.wetLevel;
-                p.width      = apvts.getRawParameterValue (ParamIDs::effectWidth   (x))->load();
+                p.width      = getModulatedValue (ParamIDs::effectWidth   (x));
                 p.freezeMode = 0.0f;
                 fxdsp.reverb.setParameters (p);
                 fxdsp.reverb.process (ctx);
@@ -805,8 +971,8 @@ void ViolentAudioProcessor::processEffects (juce::AudioBuffer<float>& master, in
             }
             case FxType::Filter:
             {
-                const float cutoff = apvts.getRawParameterValue (ParamIDs::effectFilterCut  (x))->load();
-                const float res    = apvts.getRawParameterValue (ParamIDs::effectFilterRes  (x))->load();
+                const float cutoff = getModulatedValue (ParamIDs::effectFilterCut (x));
+                const float res    = getModulatedValue (ParamIDs::effectFilterRes (x));
                 const int   ftype  = static_cast<int> (
                                         apvts.getRawParameterValue (ParamIDs::effectFilterType (x))->load());
                 fxdsp.filter.setParams (ftype, cutoff, res);
@@ -852,6 +1018,10 @@ void ViolentAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int numSamples = buffer.getNumSamples();
 
+    // Modulators run first so getModulatedValue() sees this block's values
+    // when generator/effect params are read below.
+    renderModulators (numSamples);
+
     // Load params for all active generators
     for (int s = 0; s < numActiveGenerators; ++s)
         loadGeneratorParams (s);
@@ -881,6 +1051,35 @@ void ViolentAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                       ? buffer.getMagnitude (1, 0, buffer.getNumSamples())
                       : levelL.load (std::memory_order_relaxed),
                   std::memory_order_relaxed);
+
+    // Spectrum analyzer
+    const bool stereo = buffer.getNumChannels() > 1;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float mono = stereo
+            ? 0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i))
+            : buffer.getSample (0, i);
+        pushSpectrumSample (mono);
+    }
+}
+
+void ViolentAudioProcessor::pushSpectrumSample (float sample) noexcept
+{
+    spectrumFifo[(size_t) spectrumFifoIndex++] = sample;
+    if (spectrumFifoIndex < SPECTRUM_FFT_SIZE)
+        return;
+    spectrumFifoIndex = 0;
+
+    std::copy (spectrumFifo.begin(), spectrumFifo.end(), spectrumFftData.begin());
+    std::fill (spectrumFftData.begin() + SPECTRUM_FFT_SIZE, spectrumFftData.end(), 0.0f);
+    spectrumWindow.multiplyWithWindowingTable (spectrumFftData.data(), (size_t) SPECTRUM_FFT_SIZE);
+    spectrumFFT.performFrequencyOnlyForwardTransform (spectrumFftData.data());
+
+    for (int i = 0; i < SPECTRUM_FFT_SIZE / 2; ++i)
+    {
+        const float mag = spectrumFftData[(size_t) i] / (float) SPECTRUM_FFT_SIZE;
+        spectrumMagnitudesDb[(size_t) i] = juce::Decibels::gainToDecibels (mag, -100.0f);
+    }
 }
 
 //==============================================================================
@@ -955,6 +1154,16 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
         xml->setAttribute ("fx" + juce::String(x) + "_routing", routingStr);
     }
 
+    xml->setAttribute ("numModulators", numModulators);
+    for (int m = 0; m < MAX_MODULATORS; ++m)
+    {
+        const auto& mod = modulators[(size_t) m];
+        xml->setAttribute ("mod" + juce::String(m) + "_name",   mod.name);
+        xml->setAttribute ("mod" + juce::String(m) + "_source", static_cast<int> (mod.sourceType));
+        xml->setAttribute ("mod" + juce::String(m) + "_en",     mod.enabled);
+        xml->setAttribute ("mod" + juce::String(m) + "_target", mod.targetParamID);
+    }
+
     return xml;
 }
 
@@ -1004,6 +1213,17 @@ void ViolentAudioProcessor::restoreStateFromXml (const juce::XmlElement& xml)
         const juce::String routingStr = xml.getStringAttribute ("fx" + juce::String(x) + "_routing");
         for (int s = 0; s < MAX_GENERATORS; ++s)
             fx.routing[(size_t) s] = (s < routingStr.length() && routingStr[s] == '1');
+    }
+
+    numModulators = juce::jlimit (0, MAX_MODULATORS, xml.getIntAttribute ("numModulators", 0));
+    for (int m = 0; m < MAX_MODULATORS; ++m)
+    {
+        auto& mod = modulators[(size_t) m];
+        mod.name       = xml.getStringAttribute ("mod" + juce::String(m) + "_name");
+        mod.sourceType = static_cast<ModulatorSourceType> (
+            juce::jlimit (0, NUM_MODULATOR_SOURCE_TYPES - 1, xml.getIntAttribute ("mod" + juce::String(m) + "_source", 0)));
+        mod.enabled    = xml.getBoolAttribute ("mod" + juce::String(m) + "_en", true);
+        mod.targetParamID = xml.getStringAttribute ("mod" + juce::String(m) + "_target");
     }
 }
 

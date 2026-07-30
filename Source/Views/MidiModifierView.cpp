@@ -146,6 +146,11 @@ void MidiModifierRow::resized()
 //==============================================================================
 // MidiModifierPanel
 //==============================================================================
+namespace
+{
+    constexpr MidiModType kAddTypes[NUM_MIDI_MOD_TYPES] = { MidiModType::PitchShift, MidiModType::KeyShift, MidiModType::Arp };
+}
+
 MidiModifierPanel::MidiModifierPanel (ViolentAudioProcessor& p) : processor (p)
 {
     sectionLabel.setText ("MIDI MODIFIERS", juce::dontSendNotification);
@@ -153,28 +158,21 @@ MidiModifierPanel::MidiModifierPanel (ViolentAudioProcessor& p) : processor (p)
     sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
     addAndMakeVisible (sectionLabel);
 
-    addAndMakeVisible (addBtn);
-    addBtn.onClick = [this]
+    for (int i = 0; i < NUM_MIDI_MOD_TYPES; ++i)
     {
-        if (processor.numMidiModifiers >= MAX_MIDI_MODIFIERS) return;
-
-        juce::PopupMenu menu;
-        menu.addItem (1, "Pitch Shift");
-        menu.addItem (2, "Key Shift");
-        menu.addItem (3, "Arpeggiator");
-
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (addBtn),
-            [this] (int result)
-            {
-                if (result == 0) return;
-                if (processor.numMidiModifiers >= MAX_MIDI_MODIFIERS) return;
-                const MidiModType types[] = { MidiModType::PitchShift, MidiModType::KeyShift, MidiModType::Arp };
-                const int m = processor.numMidiModifiers++;
-                processor.midiModifiers[(size_t) m].type = types[result - 1];
-                addRow (m, types[result - 1]);
-                if (onLayoutChanged) onLayoutChanged();
-            });
-    };
+        const auto type = kAddTypes[(size_t) i];
+        auto& btn = addTypeBtns[(size_t) i];
+        btn.setButtonText (juce::String ("+ ") + midiModTypeName (type));
+        addAndMakeVisible (btn);
+        btn.onClick = [this, type]
+        {
+            if (processor.numMidiModifiers >= MAX_MIDI_MODIFIERS) return;
+            const int m = processor.numMidiModifiers++;
+            processor.midiModifiers[(size_t) m].type = type;
+            addRow (m, type);
+            if (onLayoutChanged) onLayoutChanged();
+        };
+    }
     rebuild();
 }
 
@@ -243,7 +241,15 @@ void MidiModifierPanel::resized()
         rows[(size_t) m]->resized();
         a.removeFromTop (8);
     }
-    if (processor.numMidiModifiers < MAX_MIDI_MODIFIERS)
-        addBtn.setBounds (a.removeFromTop (32).reduced (4, 2));
-    addBtn.setVisible (processor.numMidiModifiers < MAX_MIDI_MODIFIERS);
+    const bool canAdd = processor.numMidiModifiers < MAX_MIDI_MODIFIERS;
+    if (canAdd)
+    {
+        auto row = a.removeFromTop (32).reduced (4, 2);
+        const int w = row.getWidth() / NUM_MIDI_MOD_TYPES;
+        for (int i = 0; i < NUM_MIDI_MOD_TYPES; ++i)
+            addTypeBtns[(size_t) i].setBounds (
+                (i < NUM_MIDI_MOD_TYPES - 1 ? row.removeFromLeft (w) : row).reduced (2, 0));
+    }
+    for (auto& btn : addTypeBtns)
+        btn.setVisible (canAdd);
 }

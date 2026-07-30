@@ -283,13 +283,29 @@ private:
 };
 
 //==============================================================================
+/** A rotary Slider whose effective drag distance is clamped to a small
+    margin beyond its own bounds — dragging the cursor further away has no
+    additional effect, so the cursor never wanders far from the knob it's
+    adjusting, even across a long drag. */
+class ConstrainedKnobSlider : public juce::Slider
+{
+public:
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        constexpr float margin = 10.0f;
+        const auto bounds = getLocalBounds().toFloat().expanded (margin);
+        Slider::mouseDrag (e.withNewPosition (bounds.getConstrainedPoint (e.position)));
+    }
+};
+
+//==============================================================================
 /** Rotary knob with name above and value below, always visible. Owns its own
     APVTS attachment (bind with attachTo()) so every call site gets consistent
     wiring instead of each owner hand-rolling a SliderAttachment. */
 class LabelledKnob : public juce::Component
 {
 public:
-    juce::Slider slider;
+    ConstrainedKnobSlider slider;
     juce::Label  nameLabel;
     juce::Label  valueLabel;
 

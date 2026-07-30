@@ -47,6 +47,7 @@ target_sources(Violent
         Source/Main.cpp
         Source/FxChain.h
         Source/GeneratorChain.h
+        Source/ModulatorChain.h
         Source/SoundProcessing/Synth.h
         Source/SoundProcessing/Sampler.cpp
         Source/SoundProcessing/Sampler.h
@@ -61,10 +62,14 @@ target_sources(Violent
         Source/Views/Generators.h
         Source/Views/MidiModifierView.cpp
         Source/Views/MidiModifierView.h
+        Source/Views/ModulatorView.cpp
+        Source/Views/ModulatorView.h
         Source/Views/EffectView.cpp
         Source/Views/EffectView.h
         Source/Views/MixerView.cpp
         Source/Views/MixerView.h
+        Source/Views/SpectrumAnalyzerView.cpp
+        Source/Views/SpectrumAnalyzerView.h
         Source/Views/RackView.cpp
         Source/Views/RackView.h
 )
@@ -101,6 +106,7 @@ target_sources(ViolentTests
         Tests/PresetTests.cpp
         Tests/MidiModifierTests.cpp
         Tests/WaveformCaptureTests.cpp
+        Tests/ModulatorTests.cpp
 )
 
 target_include_directories(ViolentTests

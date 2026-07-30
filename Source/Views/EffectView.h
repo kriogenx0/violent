@@ -90,11 +90,19 @@ public:
     int getNumRows() const noexcept { return processor.numEffects; }
     EffectRow* getRow (int i) const { return rows[(size_t) i].get(); }
 
+    // Filter is just one selectable Effect type; Chorus/Delay aren't
+    // implemented in the DSP yet, so only these five are offered when
+    // adding a new one.
+    static constexpr int NUM_ADDABLE_FX_TYPES = 5;
+
 private:
     ViolentAudioProcessor& processor;
     juce::Label sectionLabel;
     std::array<std::unique_ptr<EffectRow>, MAX_EFFECTS> rows;
-    juce::TextButton addBtn { "+ Add Effect" };
+
+    // One box per type — clicking a box adds that type directly, rather
+    // than a single "+" button opening a dropdown menu.
+    std::array<juce::TextButton, NUM_ADDABLE_FX_TYPES> addTypeBtns;
 
     void rebuild (bool forceRecreate = false);
     void addRow (int arrayIndex, FxType type);

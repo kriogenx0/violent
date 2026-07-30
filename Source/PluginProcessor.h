@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "FxChain.h"
 #include "GeneratorChain.h"
+#include "ModulatorChain.h"
 #include "SoundProcessing/Synth.h"
 #include "SoundProcessing/Sampler.h"
 #include "SoundProcessing/MidiModifier.h"
@@ -141,6 +142,27 @@ public:
     int numEffects = 0;
     std::array<EffectComponent, MAX_EFFECTS> effects;
 
+    // -----------------------------------------------------------------------
+    // Modulator Components — an Envelope or LFO source that nudges one
+    // targeted parameter's value up/down by up to its Amount, around
+    // whatever it's currently set to. Sits between Generators and Effects
+    // in the rack. targetParamID empty means "not assigned to anything yet".
+    // -----------------------------------------------------------------------
+    struct ModulatorComponent
+    {
+        juce::String name;
+        ModulatorSourceType sourceType = ModulatorSourceType::LFO;
+        bool enabled = true;
+        juce::String targetParamID;
+    };
+    int numModulators = 0;
+    std::array<ModulatorComponent, MAX_MODULATORS> modulators;
+
+    // Every parameter a Modulator can target: (parameter ID, display name).
+    // Currently generator source knobs and effect knobs — the two families
+    // musicians most commonly want to modulate.
+    std::vector<std::pair<juce::String, juce::String>> getModulatableParameters() const;
+
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
     std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
@@ -158,6 +180,15 @@ public:
     std::array<std::vector<float>, MAX_GENERATORS> waveformRing;
     std::array<int, MAX_GENERATORS> waveformRingWritePos {};
     int waveformRingSize = 0;
+
+    // --- Spectrum analyzer (master output, post-processing) ---
+    // Magnitude (dB) per FFT bin, refreshed once every SPECTRUM_FFT_SIZE
+    // samples fed through pushSpectrumSample(); the UI polls this on a timer
+    // the same way it polls waveformRing, so a little visible staleness
+    // between refreshes is expected and fine.
+    static constexpr int SPECTRUM_FFT_ORDER = 11;
+    static constexpr int SPECTRUM_FFT_SIZE  = 1 << SPECTRUM_FFT_ORDER;
+    std::array<float, SPECTRUM_FFT_SIZE / 2> spectrumMagnitudesDb {};
 
     // --- MIDI preview (plays a demo pattern so the synth can be heard without a keyboard) ---
     enum class PreviewPattern { Arpeggios = 0, LowNotes, LongSingleNotes, Chords };
@@ -216,6 +247,23 @@ private:
     void processMidi (const juce::MidiBuffer&);
     void renderGenerator (int s, juce::AudioBuffer<float>& master);
 
+    // Advances every Modulator Component's source (LFO phase, or Envelope
+    // stage) by one block and refreshes modulatorOutputs. Runs before any
+    // parameter is read for the block, so getModulatedValue() sees current
+    // values.
+    void renderModulators (int numSamples);
+    void triggerModulatorEnvelopes (bool noteOn) noexcept;
+
+    struct ModulatorState
+    {
+        float lfoPhase = 0.0f;
+        enum class EnvStage { Idle, Attack, Decay, Sustain, Release } envStage = EnvStage::Idle;
+        float envLevel = 0.0f;
+    };
+    std::array<ModulatorState, MAX_MODULATORS> modulatorState;
+    std::array<float, MAX_MODULATORS> modulatorOutputs {}; // raw source value, -1..1 (LFO) or 0..1 (Envelope)
+    int heldNoteCount = 0;
+
     // Sums whichever generators are routed to each Effect Component,
     // processes that sum through the effect's DSP, and mixes the result
     // additively into master; generators claimed by no effect mix straight
@@ -225,6 +273,18 @@ private:
 
     std::array<FxSlotDSP, MAX_EFFECTS> effectDSP;
     juce::AudioBuffer<float> effectScratch;
+
+    // Feeds one (mono-summed) master-output sample into the spectrum
+    // analyzer's FFT; runs the transform and refreshes spectrumMagnitudesDb
+    // every SPECTRUM_FFT_SIZE samples.
+    void pushSpectrumSample (float sample) noexcept;
+
+    juce::dsp::FFT spectrumFFT { SPECTRUM_FFT_ORDER };
+    juce::dsp::WindowingFunction<float> spectrumWindow { (size_t) SPECTRUM_FFT_SIZE,
+                                                          juce::dsp::WindowingFunction<float>::hann };
+    std::array<float, SPECTRUM_FFT_SIZE> spectrumFifo {};
+    int spectrumFifoIndex = 0;
+    std::array<float, SPECTRUM_FFT_SIZE * 2> spectrumFftData {};
 
 public:
     // -----------------------------------------------------------------------
@@ -237,6 +297,13 @@ public:
     // directly.
     int  applyMidiModifier (int generatorIdx, int note) const;
     bool isArpEnabled (int generatorIdx) const;
+
+    // Reads a parameter's current value plus whatever any enabled Modulator
+    // targeting it is currently contributing (scaled by that modulator's
+    // Amount and clamped to the parameter's valid range). Generator source
+    // and Effect param reads go through this instead of a raw
+    // getRawParameterValue() so modulation actually has an audible effect.
+    float getModulatedValue (const juce::String& parameterID) const noexcept;
 
 private:
     void renderMidiModifiers (int numSamples);

@@ -73,7 +73,10 @@ private:
     ViolentAudioProcessor& processor;
     juce::Label sectionLabel;
     std::array<std::unique_ptr<MidiModifierRow>, MAX_MIDI_MODIFIERS> rows;
-    juce::TextButton addBtn { "+ Add MIDI Modifier" };
+
+    // One box per type — clicking a box adds that type directly, rather
+    // than a single "+" button opening a dropdown menu.
+    std::array<juce::TextButton, NUM_MIDI_MOD_TYPES> addTypeBtns;
 
     void rebuild (bool forceRecreate = false);
     void addRow (int arrayIndex, MidiModType type);

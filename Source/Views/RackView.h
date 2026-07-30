@@ -3,19 +3,21 @@
 #include "../PluginProcessor.h"
 #include "MidiModifierView.h"
 #include "Generators.h"
+#include "ModulatorView.h"
 #include "EffectView.h"
 #include "MixerView.h"
+#include "SpectrumAnalyzerView.h"
 
 //==============================================================================
 /** The whole rack, laid out at a fixed logical width (BASE_WIDTH), top to
-    bottom: MIDI Modifiers, Generators, (Phase 2: Modulators), Effects, then
-    the Mixer. Routing lives directly on each MIDI Modifier/Effect row rather
-    than as a separate router panel. The owning editor scales this whole
-    component uniformly via a transform so '+'/'-' zoom controls can grow or
-    shrink the rack without every child needing to know about the current
-    zoom level. The header toolbar (title, presets, preview, meter) lives on
-    the editor itself and stays fixed size regardless of zoom, so it never
-    collides with the zoom controls. */
+    bottom: MIDI Modifiers, Generators, Modulators, Effects, the Mixer, then
+    a collapsible Spectrum Analyzer. Routing lives directly on each MIDI
+    Modifier/Effect row rather than as a separate router panel. The owning
+    editor scales this whole component uniformly via a transform so '+'/'-'
+    zoom controls can grow or shrink the rack without every child needing to
+    know about the current zoom level. The header toolbar (title, presets,
+    preview, meter) lives on the editor itself and stays fixed size
+    regardless of zoom, so it never collides with the zoom controls. */
 class ScalableRackComponent : public juce::Component
 {
 public:
@@ -37,16 +39,20 @@ public:
     // For the minimap.
     MidiModifierPanel& getMidiModifierPanel() { return midiModifierPanel; }
     GeneratorPanel& getGeneratorPanel() { return generatorPanel; }
+    ModulatorPanel& getModulatorPanel() { return modulatorPanel; }
     EffectPanel& getEffectPanel() { return effectPanel; }
     MixerPanel& getMixerPanel() { return mixerPanel; }
+    SpectrumAnalyzerPanel& getSpectrumPanel() { return spectrumPanel; }
 
 private:
     ViolentAudioProcessor& processor;
 
     MidiModifierPanel midiModifierPanel;
     GeneratorPanel generatorPanel;
+    ModulatorPanel modulatorPanel;
     EffectPanel effectPanel;
     MixerPanel mixerPanel;
+    SpectrumAnalyzerPanel spectrumPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScalableRackComponent)
 };
