@@ -107,6 +107,7 @@ target_sources(ViolentTests
         Tests/MidiModifierTests.cpp
         Tests/WaveformCaptureTests.cpp
         Tests/ModulatorTests.cpp
+        Tests/RackLayoutTests.cpp
 )
 
 target_include_directories(ViolentTests

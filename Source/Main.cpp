@@ -37,7 +37,7 @@ namespace
             for (auto* child : getChildren())
                 if (auto* btn = dynamic_cast<juce::TextButton*> (child))
                     if (btn->getButtonText() == "Options")
-                        btn->setBounds (150, 13, 70, 24);
+                        btn->setBounds (150, 13, 60, 24);
         }
     };
 

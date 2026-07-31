@@ -103,7 +103,11 @@ void ViolentAudioProcessorEditor::updateHeight()
 
 void ViolentAudioProcessorEditor::setUiScale (float newScale)
 {
-    newScale = juce::jlimit (0.6f, 1.5f, newScale);
+    // 0.85 is the lowest scale at which the header toolbar's fixed-width
+    // controls (which don't shrink with zoom) still fit the window without
+    // the right-anchored preview controls overlapping the left-anchored
+    // zoom/randomize buttons.
+    newScale = juce::jlimit (0.85f, 1.5f, newScale);
     if (juce::approximatelyEqual (newScale, uiScale)) return;
 
     uiScale = newScale;
@@ -192,14 +196,17 @@ void ViolentAudioProcessorEditor::resized()
     previewBtn.setBounds (getWidth() - 84, 12, 30, 26);
     previewPatternBox.setBounds (getWidth() - 234, 12, 140, 26);
 
-    presetBox.setBounds (150, 12, 180, 26);
-    savePresetBtn.setBounds (336, 12, 56, 26);
+    // Starts at 218 rather than 150 to leave clear room for the standalone
+    // window's native-title-bar "Options" button (see Main.cpp), which lives
+    // at x=150-210 in this same coordinate space — they used to overlap.
+    presetBox.setBounds (218, 12, 180, 26);
+    savePresetBtn.setBounds (404, 12, 56, 26);
 
     zoomOutBtn.setBounds (savePresetBtn.getRight() + 16, 12, 26, 26);
     zoomInBtn.setBounds (zoomOutBtn.getRight() + 4, 12, 26, 26);
     zoomLabel.setBounds (zoomInBtn.getRight() + 8, 12, 60, 26);
 
-    randomizeBtn.setBounds (zoomLabel.getRight() + 16, 12, 90, 26);
+    randomizeBtn.setBounds (zoomLabel.getRight() + 8, 12, 90, 26);
 
     navViewport.setBounds (0, HEADER_H, Minimap::WIDTH, getHeight() - HEADER_H);
     rackViewport.setBounds (Minimap::WIDTH, HEADER_H, getWidth() - Minimap::WIDTH, getHeight() - HEADER_H);

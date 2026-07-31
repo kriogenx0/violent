@@ -290,12 +290,29 @@ private:
 class ConstrainedKnobSlider : public juce::Slider
 {
 public:
+    void resized() override
+    {
+        Slider::resized();
+
+        // Slider's default drag distance for the full 0..1 range is 250px
+        // (see Slider::Pimpl::pixelsForFullDragExtent) — far more than the
+        // small area mouseDrag() clamps the cursor to below. Without this,
+        // the clamp leaves only a small fraction of the range reachable
+        // before the knob stops responding, which feels like the cursor has
+        // come loose from the control. Matching the sensitivity to the
+        // clamped travel distance keeps the whole range reachable within it.
+        setMouseDragSensitivity (juce::jmax (10, juce::jmin (getWidth(), getHeight())
+                                                      + (int) (margin * 2.0f)));
+    }
+
     void mouseDrag (const juce::MouseEvent& e) override
     {
-        constexpr float margin = 10.0f;
         const auto bounds = getLocalBounds().toFloat().expanded (margin);
         Slider::mouseDrag (e.withNewPosition (bounds.getConstrainedPoint (e.position)));
     }
+
+private:
+    static constexpr float margin = 10.0f;
 };
 
 //==============================================================================

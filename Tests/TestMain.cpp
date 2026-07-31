@@ -7,10 +7,12 @@ int main (int, char**)
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
 
-    // Only run this project's own tests (category "Processor") — runAllTests()
-    // would also pull in JUCE's own internal module test suite, which is slow
-    // and not something this project needs to verify on every run.
-    runner.runTestsInCategory ("Processor");
+    // Only run this project's own tests (categories "Processor" and "Views") —
+    // runAllTests() would also pull in JUCE's own internal module test suite,
+    // which is slow and not something this project needs to verify on every run.
+    auto tests = juce::UnitTest::getTestsInCategory ("Processor");
+    tests.addArray (juce::UnitTest::getTestsInCategory ("Views"));
+    runner.runTests (tests);
 
     int numFailures = 0;
     for (int i = 0; i < runner.getNumResults(); ++i)
