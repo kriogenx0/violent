@@ -188,14 +188,24 @@ void ModulatorPanel::addRow (int arrayIndex, ModulatorSourceType type)
     rows[(size_t) arrayIndex]->showForSource (type);
     rows[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
     {
-        for (int j = arrayIndex; j < processor.numModulators - 1; ++j)
+        // Deferred: addRow()/rows[...] = nullptr below destroy this row, including
+        // the DeleteButton whose click is invoking this very callback. Tearing it
+        // down synchronously would free the component while it's still on the call
+        // stack (inside Button::mouseUp), which leaves JUCE's mouse-hover/hit-test
+        // tracking pointing at freed components until the next full re-hover —
+        // surfacing as clicks landing in the wrong place. callAsync lets the click
+        // finish unwinding first.
+        juce::MessageManager::callAsync ([this, arrayIndex]
         {
-            processor.modulators[(size_t) j] = processor.modulators[(size_t) (j + 1)];
-            addRow (j, processor.modulators[(size_t) j].sourceType);
-        }
-        processor.modulators[(size_t) (--processor.numModulators)] = {};
-        rows[(size_t) processor.numModulators] = nullptr;
-        if (onLayoutChanged) onLayoutChanged();
+            for (int j = arrayIndex; j < processor.numModulators - 1; ++j)
+            {
+                processor.modulators[(size_t) j] = processor.modulators[(size_t) (j + 1)];
+                addRow (j, processor.modulators[(size_t) j].sourceType);
+            }
+            processor.modulators[(size_t) (--processor.numModulators)] = {};
+            rows[(size_t) processor.numModulators] = nullptr;
+            if (onLayoutChanged) onLayoutChanged();
+        });
     };
 }
 

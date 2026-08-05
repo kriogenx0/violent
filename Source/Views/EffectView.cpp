@@ -241,14 +241,24 @@ void EffectPanel::addRow (int arrayIndex, FxType type)
     rows[(size_t) arrayIndex]->showForType (type);
     rows[(size_t) arrayIndex]->onRemove = [this, arrayIndex]
     {
-        for (int j = arrayIndex; j < processor.numEffects - 1; ++j)
+        // Deferred: addRow()/rows[...] = nullptr below destroy this row, including
+        // the DeleteButton whose click is invoking this very callback. Tearing it
+        // down synchronously would free the component while it's still on the call
+        // stack (inside Button::mouseUp), which leaves JUCE's mouse-hover/hit-test
+        // tracking pointing at freed components until the next full re-hover —
+        // surfacing as clicks landing in the wrong place. callAsync lets the click
+        // finish unwinding first.
+        juce::MessageManager::callAsync ([this, arrayIndex]
         {
-            processor.effects[(size_t) j] = processor.effects[(size_t) (j + 1)];
-            addRow (j, processor.effects[(size_t) j].type);
-        }
-        processor.effects[(size_t) (--processor.numEffects)] = {};
-        rows[(size_t) processor.numEffects] = nullptr;
-        if (onLayoutChanged) onLayoutChanged();
+            for (int j = arrayIndex; j < processor.numEffects - 1; ++j)
+            {
+                processor.effects[(size_t) j] = processor.effects[(size_t) (j + 1)];
+                addRow (j, processor.effects[(size_t) j].type);
+            }
+            processor.effects[(size_t) (--processor.numEffects)] = {};
+            rows[(size_t) processor.numEffects] = nullptr;
+            if (onLayoutChanged) onLayoutChanged();
+        });
     };
 }
 

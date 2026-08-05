@@ -237,11 +237,22 @@ void GeneratorPanel::rebuild (bool forceRecreate)
                 cards[(size_t) s]->onRemove = [this, s]
                 {
                     if (processor.numActiveGenerators <= 1) return;
-                    for (int j = s; j < processor.numActiveGenerators - 1; ++j)
-                        processor.generators[(size_t) j] = processor.generators[(size_t) (j + 1)];
-                    processor.generators[(size_t) (--processor.numActiveGenerators)] = {};
-                    rebuild();
-                    if (onLayoutChanged) onLayoutChanged();
+                    // Deferred: rebuild() below can destroy cards[s], including the
+                    // DeleteButton whose click is invoking this very callback. Tearing
+                    // it down synchronously would free the component while it's still
+                    // on the call stack (inside Button::mouseUp), which leaves JUCE's
+                    // mouse-hover/hit-test tracking pointing at freed components until
+                    // the next full re-hover — surfacing as clicks landing in the wrong
+                    // place. callAsync lets the click finish unwinding first.
+                    juce::MessageManager::callAsync ([this, s]
+                    {
+                        if (processor.numActiveGenerators <= 1) return;
+                        for (int j = s; j < processor.numActiveGenerators - 1; ++j)
+                            processor.generators[(size_t) j] = processor.generators[(size_t) (j + 1)];
+                        processor.generators[(size_t) (--processor.numActiveGenerators)] = {};
+                        rebuild();
+                        if (onLayoutChanged) onLayoutChanged();
+                    });
                 };
             }
         }

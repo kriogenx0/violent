@@ -121,6 +121,11 @@ target_compile_definitions(ViolentTests
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_UNIT_TESTS=1
+        # Safe here since ViolentTests is a standalone console app, not a plugin
+        # hosted inside a DAW — lets tests use runDispatchLoopUntil() to verify
+        # MessageManager::callAsync()-deferred work (e.g. deferred row/card
+        # removal) actually runs.
+        JUCE_MODAL_LOOPS_PERMITTED=1
 )
 
 target_link_libraries(ViolentTests
