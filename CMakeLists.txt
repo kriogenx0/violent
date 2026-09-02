@@ -108,6 +108,8 @@ target_sources(ViolentTests
         Tests/WaveformCaptureTests.cpp
         Tests/ModulatorTests.cpp
         Tests/RackLayoutTests.cpp
+        Tests/RandomizeTests.cpp
+        Tests/ParameterFormattingTests.cpp
 )
 
 target_include_directories(ViolentTests

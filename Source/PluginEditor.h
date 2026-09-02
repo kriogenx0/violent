@@ -27,7 +27,8 @@ private:
     Minimap minimap;
     juce::Viewport navViewport;
 
-    LevelMeter  meter;
+    LevelMeter  meter { processor };
+    MidiActivityLight midiLight { processor };
     juce::TextButton previewBtn;
     juce::ComboBox   previewPatternBox;
 

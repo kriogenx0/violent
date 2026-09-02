@@ -10,8 +10,8 @@ static constexpr int MAX_GENERATORS      = 8;
 static constexpr int MAX_MIDI_MODIFIERS  = 8;
 
 // MIDI modifier types
-enum class MidiModType { PitchShift = 0, KeyShift, Arp };
-static constexpr int NUM_MIDI_MOD_TYPES = 3;
+enum class MidiModType { PitchShift = 0, KeyShift, Arp, Octave };
+static constexpr int NUM_MIDI_MOD_TYPES = 4;
 
 inline const char* midiModTypeName (MidiModType t)
 {
@@ -19,6 +19,7 @@ inline const char* midiModTypeName (MidiModType t)
         case MidiModType::PitchShift: return "Pitch Shift";
         case MidiModType::KeyShift:   return "Key Shift";
         case MidiModType::Arp:        return "Arpeggiator";
+        case MidiModType::Octave:     return "Octave";
         default:                      return "Pitch Shift";
     }
 }

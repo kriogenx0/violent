@@ -146,9 +146,9 @@ void EffectRow::layoutKnobs (std::initializer_list<LabelledKnob*> ks, juce::Rect
 void EffectRow::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
-    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
-    g.setColour (ViolentColours::overlay);
-    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f, 1.0f);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius);
+    g.setColour (ViolentColours::accent.withAlpha (0.6f));
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius, 1.5f);
 }
 
 void EffectRow::resized()
@@ -203,12 +203,6 @@ void EffectRow::resized()
 //==============================================================================
 // EffectPanel
 //==============================================================================
-namespace
-{
-    constexpr FxType kAddableFxTypes[EffectPanel::NUM_ADDABLE_FX_TYPES] =
-        { FxType::Distortion, FxType::Compressor, FxType::Gate, FxType::Reverb, FxType::Filter };
-}
-
 EffectPanel::EffectPanel (ViolentAudioProcessor& p) : processor (p)
 {
     sectionLabel.setText ("EFFECTS", juce::dontSendNotification);
@@ -218,7 +212,7 @@ EffectPanel::EffectPanel (ViolentAudioProcessor& p) : processor (p)
 
     for (int i = 0; i < NUM_ADDABLE_FX_TYPES; ++i)
     {
-        const auto type = kAddableFxTypes[i];
+        const auto type = addableFxTypes[(size_t) i];
         auto& btn = addTypeBtns[(size_t) i];
         btn.setButtonText (juce::String ("+ ") + fxTypeName (type));
         addAndMakeVisible (btn);

@@ -35,6 +35,7 @@ private:
     juce::ComboBox   keyRootBox;
     juce::ComboBox   keyScaleBox;
     LabelledKnob     arpRateKnob  { "Arp Rate", ViolentColours::yellow };
+    juce::TextButton octaveModeBtn; // Octave type only: toggles Add/Replace
 
     juce::Label routingLabel;
     std::array<juce::TextButton, MAX_GENERATORS> routingBtns;
@@ -44,6 +45,7 @@ private:
 
     void setAllInvisible();
     void updateEnabledLook();
+    void updateOctaveModeLook();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MidiModifierRow)
 };

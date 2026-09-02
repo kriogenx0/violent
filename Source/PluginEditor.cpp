@@ -23,6 +23,9 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
 
     addAndMakeVisible (meter);
 
+    addAndMakeVisible (midiLight);
+    midiLight.setTooltip ("MIDI activity");
+
     previewBtn.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xE2\x96\xB6")));
     previewBtn.setClickingTogglesState (true);
     previewBtn.setToggleState (false, juce::dontSendNotification);
@@ -66,7 +69,13 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     addAndMakeVisible (zoomLabel);
     zoomLabel.setVisible (false);
 
-    randomizeBtn.onClick = [this] { processor.randomizeAll(); };
+    randomizeBtn.onClick = [this]
+    {
+        processor.randomizeAll();
+        rack.refreshFromState();
+        minimap.refreshFromState();
+        updateHeight();
+    };
     addAndMakeVisible (randomizeBtn);
 
     rack.onLayoutChanged = [this] { minimap.refreshFromState(); updateHeight(); };
@@ -96,9 +105,23 @@ void ViolentAudioProcessorEditor::updateHeight()
     setResizeLimits (newW, 200, newW, 100000);
 
     if (newW == getWidth() && newH == getHeight())
+    {
         resized(); // size unchanged, but layout/scale may still need re-applying
+
+        // resized() alone doesn't guarantee the rack viewport's content gets
+        // redrawn: content added/removed below the visible fold can leave
+        // Viewport::lastVisibleArea unchanged (its own visible rectangle
+        // didn't move), so Viewport::updateVisibleArea() never repaints -
+        // stale pixels are left on screen at controls' old positions even
+        // though their real (correctly hit-tested) bounds have already
+        // moved, until something else forces a full redraw (e.g. resizing
+        // the window). Force it explicitly instead of relying on that.
+        rackViewport.repaint();
+    }
     else
-        setSize (newW, newH);
+    {
+        setSize (newW, newH); // a real size change forces AppKit to redraw everything anyway
+    }
 }
 
 void ViolentAudioProcessorEditor::setUiScale (float newScale)
@@ -190,10 +213,9 @@ void ViolentAudioProcessorEditor::paint (juce::Graphics& g)
 void ViolentAudioProcessorEditor::resized()
 {
     meter.setBounds (getWidth() - 44, 8, 36, 34);
-    meter.setLevels (processor.levelL.load (std::memory_order_relaxed),
-                     processor.levelR.load (std::memory_order_relaxed));
 
     previewBtn.setBounds (getWidth() - 84, 12, 30, 26);
+    midiLight.setBounds (getWidth() - 53, 21, 8, 8);
     previewPatternBox.setBounds (getWidth() - 234, 12, 140, 26);
 
     // Starts at 218 rather than 150 to leave clear room for the standalone

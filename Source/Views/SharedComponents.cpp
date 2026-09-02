@@ -283,6 +283,8 @@ LabelledKnob::LabelledKnob (const juce::String& name, juce::Colour colour)
         valueLabel.setText (slider.getTextFromValue (slider.getValue()),
                             juce::dontSendNotification);
     };
+
+    startTimerHz (10);
 }
 
 void LabelledKnob::resized()
@@ -295,9 +297,36 @@ void LabelledKnob::resized()
 
 void LabelledKnob::attachTo (juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID)
 {
+    paramID = parameterID;
+    ownerProcessor = dynamic_cast<ViolentAudioProcessor*> (&apvts.processor);
+
+    // Only generator-source and effect knobs are modulatable (matches
+    // ViolentAudioProcessor::getModulatableParameters()'s own filter) - tag
+    // the slider so the crosshair target-picker's rack-wide hit-test can
+    // recognise it as a valid drop target.
+    const bool isModulatable = (parameterID.startsWith ("gen_") && parameterID.contains ("_src_"))
+                             || parameterID.startsWith ("fx");
+    if (isModulatable)
+        slider.getProperties().set ("modParamID", parameterID);
+
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         apvts, parameterID, slider);
     valueLabel.setText (slider.getTextFromValue (slider.getValue()), juce::dontSendNotification);
+}
+
+void LabelledKnob::timerCallback()
+{
+    if (ownerProcessor == nullptr || paramID.isEmpty()) return;
+
+    bool isTarget = false;
+    for (int m = 0; m < ownerProcessor->numModulators; ++m)
+    {
+        const auto& mod = ownerProcessor->modulators[(size_t) m];
+        if (mod.enabled && mod.targetParamID == paramID) { isTarget = true; break; }
+    }
+
+    static const juce::Colour vibrantPurple { 0xffb350ff };
+    slider.setColour (juce::Slider::rotarySliderFillColourId, isTarget ? vibrantPurple : knobColour);
 }
 
 //==============================================================================
@@ -318,7 +347,7 @@ void LevelMeter::paint (juce::Graphics& g)
                    : norm > 0.6f  ? ViolentColours::yellow : ViolentColours::green);
         g.fillRect (x, b.getBottom() - b.getHeight() * norm, w, b.getHeight() * norm);
     };
-    drawBar (b.getX(), peakL);
-    drawBar (b.getX() + w + gap, peakR);
+    drawBar (b.getX(),         processor.levelL.load (std::memory_order_relaxed));
+    drawBar (b.getX() + w + gap, processor.levelR.load (std::memory_order_relaxed));
 }
 

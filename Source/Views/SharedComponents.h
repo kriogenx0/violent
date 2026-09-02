@@ -17,7 +17,7 @@ namespace ViolentColours
     static const juce::Colour blue       { 0xff89b4fa };
     static const juce::Colour teal       { 0xff94e2d5 };
 
-    static constexpr float cornerRadius = 6.0f;
+    static constexpr float cornerRadius = 8.0f;
 }
 
 //==============================================================================
@@ -251,11 +251,14 @@ public:
 
         juce::Path path;
         bool first = true;
+        // Visual boost so quiet/attenuated signals are still clearly readable
+        // as a scope trace - this is a preview, not a level meter.
+        constexpr float visualGain = 3.0f;
         for (int i = 0; i < n; i += step)
         {
             const int ringIdx = ((writePos - n + i) % ringSize + ringSize) % ringSize;
             const float x = plot.getX() + plot.getWidth() * (float) i / (float) (n - 1);
-            const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, ring[(size_t) ringIdx]) * plot.getHeight() * 0.5f;
+            const float y = plot.getCentreY() - juce::jlimit (-1.0f, 1.0f, ring[(size_t) ringIdx] * visualGain) * plot.getHeight() * 0.5f;
             if (first) { path.startNewSubPath (x, y); first = false; } else path.lineTo (x, y);
         }
         g.setColour (ViolentColours::accent);
@@ -280,6 +283,98 @@ private:
     int generator;
     int windowIndex = 1; // 10ms by default
     juce::TextButton windowBtn;
+};
+
+//==============================================================================
+/** Static overview of a generator's loaded sample file — a min/max outline
+    of the whole buffer, unlike WaveformView's live scrolling scope, since a
+    sample's shape doesn't change while it plays. Rebuilt only when a new
+    sample is loaded (refresh()), not on a timer. */
+class SampleWaveformView : public juce::Component
+{
+public:
+    SampleWaveformView (ViolentAudioProcessor& p, int generatorIdx)
+        : processor (p), generator (generatorIdx)
+    {
+        refresh();
+    }
+
+    void refresh()
+    {
+        outline.clear();
+
+        auto& module = processor.getSampler().modules[(size_t) generator];
+        const juce::SpinLock::ScopedLockType sl (module.lock);
+
+        const int numSamples = module.buffer.getNumSamples();
+        if (module.hasData && numSamples > 0)
+        {
+            const int numChannels = module.buffer.getNumChannels();
+            constexpr int numColumns = 128;
+            outline.reserve ((size_t) numColumns);
+
+            for (int c = 0; c < numColumns; ++c)
+            {
+                const int start = (int) ((int64_t) c * numSamples / numColumns);
+                const int end   = juce::jmax (start + 1, (int) ((int64_t) (c + 1) * numSamples / numColumns));
+                float lo = 0.0f, hi = 0.0f;
+                for (int ch = 0; ch < numChannels; ++ch)
+                {
+                    const auto range = module.buffer.findMinMax (ch, start, end - start);
+                    lo = juce::jmin (lo, range.getStart());
+                    hi = juce::jmax (hi, range.getEnd());
+                }
+                outline.push_back ({ lo, hi });
+            }
+        }
+
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (ViolentColours::background);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+        auto plot = b.reduced (5.0f, 4.0f);
+
+        if (outline.empty())
+        {
+            g.setColour (ViolentColours::subtext);
+            g.setFont (juce::Font (juce::FontOptions().withHeight (10.0f)));
+            g.drawText ("No sample loaded", plot.toNearestInt(), juce::Justification::centred);
+            return;
+        }
+
+        g.setColour (ViolentColours::overlay);
+        g.drawHorizontalLine ((int) plot.getCentreY(), plot.getX(), plot.getRight());
+
+        const int n = (int) outline.size();
+        juce::Path path;
+        for (int i = 0; i < n; ++i)
+        {
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) (n - 1);
+            const float y = plot.getCentreY() - outline[(size_t) i].second * plot.getHeight() * 0.5f;
+            if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+        }
+        for (int i = n - 1; i >= 0; --i)
+        {
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) (n - 1);
+            path.lineTo (x, plot.getCentreY() - outline[(size_t) i].first * plot.getHeight() * 0.5f);
+        }
+        path.closeSubPath();
+
+        g.setColour (ViolentColours::accent);
+        g.fillPath (path);
+    }
+
+private:
+    ViolentAudioProcessor& processor;
+    int generator;
+    std::vector<std::pair<float, float>> outline;
 };
 
 //==============================================================================
@@ -318,8 +413,10 @@ private:
 //==============================================================================
 /** Rotary knob with name above and value below, always visible. Owns its own
     APVTS attachment (bind with attachTo()) so every call site gets consistent
-    wiring instead of each owner hand-rolling a SliderAttachment. */
-class LabelledKnob : public juce::Component
+    wiring instead of each owner hand-rolling a SliderAttachment. Also polls
+    whether it's the current target of any enabled Modulator and, if so,
+    renders its fill in a vibrant purple instead of its usual colour. */
+class LabelledKnob : public juce::Component, private juce::Timer
 {
 public:
     ConstrainedKnobSlider slider;
@@ -341,19 +438,324 @@ public:
 private:
     juce::Colour knobColour;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    juce::String paramID;
+    ViolentAudioProcessor* ownerProcessor = nullptr;
+
+    void timerCallback() override;
 };
 
 //==============================================================================
-/** Level meter bar (L+R), polled via timer. */
+/** ADSR curve with a playhead that sweeps left to right in real time and
+    loops continuously, so the envelope's shape is visible without needing a
+    live note. Reads the four sliders fresh on every repaint (there's no
+    fixed "note held" duration to sync to, so the sustain segment uses a
+    constant visual hold instead). */
+/** Snapshot of an envelope's real activity, so EnvelopeGraphView's playhead
+    can sync to actual note timing instead of animating a demo loop
+    regardless of whether anything is playing. */
+struct EnvelopeActivity
+{
+    bool active = false;            // any voice/state still in attack/decay/sustain/release
+    bool held   = false;            // still before note-off (attack/decay/sustain)
+    juce::uint32 startMs = 0;        // when it last entered Attack (meaningful if held)
+    juce::uint32 releaseStartMs = 0; // when it last entered Release (meaningful if !held)
+};
+
+class EnvelopeGraphView : public juce::Component, private juce::Timer
+{
+public:
+    EnvelopeGraphView (juce::Slider& att, juce::Slider& dec, juce::Slider& sus, juce::Slider& rel,
+                        std::function<EnvelopeActivity()> activityIn)
+        : attSlider (att), decSlider (dec), susSlider (sus), relSlider (rel), getActivity (std::move (activityIn))
+    {
+        startTimerHz (30);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (ViolentColours::background);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+        auto plot = b.reduced (5.0f, 4.0f);
+
+        const float att = (float) attSlider.getValue();
+        const float dec = (float) decSlider.getValue();
+        const float sus = (float) susSlider.getValue();
+        const float rel = (float) relSlider.getValue();
+        constexpr float holdS = 0.6f;
+        const float total = juce::jmax (0.05f, att + dec + holdS + rel);
+
+        auto levelAt = [&] (float t) -> float
+        {
+            if (t < att) return att > 0.0f ? t / att : 1.0f;
+            t -= att;
+            if (t < dec) return dec > 0.0f ? 1.0f - (1.0f - sus) * (t / dec) : sus;
+            t -= dec;
+            if (t < holdS) return sus;
+            t -= holdS;
+            if (t < rel) return rel > 0.0f ? sus * (1.0f - t / rel) : 0.0f;
+            return 0.0f;
+        };
+
+        juce::Path path;
+        constexpr int steps = 96;
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float t = total * (float) i / (float) steps;
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) steps;
+            const float y = plot.getBottom() - levelAt (t) * plot.getHeight();
+            if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+        }
+
+        auto fillPath = path;
+        fillPath.lineTo (plot.getRight(), plot.getBottom());
+        fillPath.lineTo (plot.getX(), plot.getBottom());
+        fillPath.closeSubPath();
+        g.setGradientFill (juce::ColourGradient (ViolentColours::accent.withAlpha (0.35f), 0, plot.getY(),
+                                                  ViolentColours::accent.withAlpha (0.0f), 0, plot.getBottom(), false));
+        g.fillPath (fillPath);
+
+        g.setColour (ViolentColours::accent);
+        g.strokePath (path, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved));
+
+        const auto activity = getActivity ? getActivity() : EnvelopeActivity {};
+        if (! activity.active) return; // idle: no playhead, no animation
+
+        const auto now = juce::Time::getMillisecondCounter();
+        // Held (attack/decay/sustain) clamps into the sustain plateau rather
+        // than running on into a fake release - real sustain holds for as
+        // long as the note does, which this can't predict. Releasing plays
+        // out the release ramp from when note-off actually happened, then
+        // holds at the end rather than looping back to attack.
+        const float t = activity.held
+            ? juce::jmin ((float) (now - activity.startMs) * 0.001f, att + dec + holdS)
+            : juce::jmin (att + dec + holdS + (float) (now - activity.releaseStartMs) * 0.001f, total);
+
+        const float px = plot.getX() + plot.getWidth() * (t / total);
+        const float py = plot.getBottom() - levelAt (t) * plot.getHeight();
+        g.setColour (ViolentColours::text.withAlpha (0.5f));
+        g.drawVerticalLine ((int) px, plot.getY(), plot.getBottom());
+        g.setColour (ViolentColours::text);
+        g.fillEllipse (px - 3.0f, py - 3.0f, 6.0f, 6.0f);
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    juce::Slider& attSlider, & decSlider, & susSlider, & relSlider;
+    std::function<EnvelopeActivity()> getActivity;
+};
+
+//==============================================================================
+/** LFO shape preview at its real rate, with a playhead that sweeps left to
+    right in sync with actual phase and loops. Shape/rate are read fresh on
+    every repaint so it tracks the shape ComboBox/rate knob immediately. */
+class LfoGraphView : public juce::Component, private juce::Timer
+{
+public:
+    LfoGraphView (juce::Slider& rate, juce::ComboBox& shape)
+        : rateSlider (rate), shapeBox (shape)
+    {
+        startTimerHz (30);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto b = getLocalBounds().toFloat();
+        g.setColour (ViolentColours::background);
+        g.fillRoundedRectangle (b, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
+
+        auto plot = b.reduced (5.0f, 4.0f);
+        g.setColour (ViolentColours::overlay);
+        g.drawHorizontalLine ((int) plot.getCentreY(), plot.getX(), plot.getRight());
+
+        constexpr int numCycles = 2;
+        const int shapeIdx = shapeBox.getSelectedItemIndex();
+
+        auto shapeAt = [] (int idx, float phase) -> float
+        {
+            phase -= std::floor (phase);
+            switch (idx)
+            {
+                case 0:  return std::sin (juce::MathConstants<float>::twoPi * phase);       // Sine
+                case 1:  return 1.0f - 4.0f * std::abs (phase - 0.5f);                      // Triangle
+                case 2:  return phase < 0.5f ? 1.0f : -1.0f;                                // Square
+                default: return 2.0f * phase - 1.0f;                                        // Saw
+            }
+        };
+
+        juce::Path path;
+        constexpr int steps = 200;
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float phase = numCycles * (float) i / (float) steps;
+            const float x = plot.getX() + plot.getWidth() * (float) i / (float) steps;
+            const float y = plot.getCentreY() - shapeAt (shapeIdx, phase) * plot.getHeight() * 0.45f;
+            if (i == 0) path.startNewSubPath (x, y); else path.lineTo (x, y);
+        }
+        g.setColour (ViolentColours::accent);
+        g.strokePath (path, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved));
+
+        const float rate = juce::jmax (0.02f, (float) rateSlider.getValue());
+        const float sweepPeriod = numCycles / rate;
+        const float sweepPhase = (float) std::fmod (juce::Time::getMillisecondCounterHiRes() * 0.001, (double) sweepPeriod) / sweepPeriod;
+        const float px = plot.getX() + plot.getWidth() * sweepPhase;
+        g.setColour (ViolentColours::text.withAlpha (0.5f));
+        g.drawVerticalLine ((int) px, plot.getY(), plot.getBottom());
+        g.setColour (ViolentColours::text);
+        g.fillEllipse (px - 3.0f, plot.getCentreY() - shapeAt (shapeIdx, sweepPhase * numCycles) * plot.getHeight() * 0.45f - 3.0f, 6.0f, 6.0f);
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+
+    juce::Slider& rateSlider;
+    juce::ComboBox& shapeBox;
+};
+
+//==============================================================================
+/** Master L+R level meter bar, polling the processor's level atomics via its
+    own timer rather than needing an owner to push updates every frame. */
 class LevelMeter : public juce::Component, private juce::Timer
 {
 public:
-    LevelMeter() { startTimerHz (30); }
-    void setLevels (float l, float r) noexcept { peakL = l; peakR = r; }
+    explicit LevelMeter (ViolentAudioProcessor& p) : processor (p) { startTimerHz (30); }
     void paint (juce::Graphics& g) override;
 
 private:
-    float peakL = 0.0f, peakR = 0.0f;
+    ViolentAudioProcessor& processor;
+    void timerCallback() override { repaint(); }
+};
+
+//==============================================================================
+/** Sits on top of the whole rack, invisible until a Modulator's crosshair
+    button arms processor.modTargetPick. While armed, it covers the full rack
+    (so it can reach every knob regardless of scroll position) but only
+    occupies each tagged modulatable knob's own bounds (see LabelledKnob::
+    attachTo(), which stashes "modParamID" in the slider's properties) for
+    hit-testing, painting, and the crosshair cursor - everywhere else in the
+    rack is untouched "empty layout": clicks and hovers pass straight through
+    to whatever's actually there, so the rest of the UI stays fully usable
+    while a pick is armed. Clicking a tagged knob reports its parameter ID
+    back via modTargetPick.onPick. Polls modTargetPick.active on a timer
+    rather than needing every "arm" call site to reach back into this
+    Component, so it can live once at the rack root. */
+class ModTargetPickOverlay : public juce::Component, private juce::Timer
+{
+public:
+    explicit ModTargetPickOverlay (ViolentAudioProcessor& p) : processor (p)
+    {
+        setInterceptsMouseClicks (true, false);
+        startTimerHz (15);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        for (auto& target : collectTargets())
+        {
+            g.setColour (ViolentColours::accent.withAlpha (0.14f));
+            g.fillRoundedRectangle (target.bounds.toFloat(), 4.0f);
+            g.setColour (ViolentColours::accent);
+            g.drawRoundedRectangle (target.bounds.toFloat().reduced (0.5f), 4.0f, 1.5f);
+        }
+    }
+
+    // Confines this component's interactive area to the knobs themselves -
+    // everywhere else, JUCE routes the event straight through to whatever's
+    // beneath, exactly as if this overlay weren't there.
+    bool hitTest (int x, int y) override
+    {
+        for (auto& target : collectTargets())
+            if (target.bounds.contains (x, y))
+                return true;
+        return false;
+    }
+
+    juce::MouseCursor getMouseCursor() override { return juce::MouseCursor::CrosshairCursor; }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        setVisible (false);
+        processor.modTargetPick.active = false;
+
+        auto onPick = std::move (processor.modTargetPick.onPick);
+        processor.modTargetPick.onPick = nullptr;
+
+        for (auto& target : collectTargets())
+            if (target.bounds.contains (e.getPosition()) && onPick)
+            {
+                onPick (target.paramID);
+                break;
+            }
+    }
+
+private:
+    ViolentAudioProcessor& processor;
+
+    struct Target { juce::Rectangle<int> bounds; juce::String paramID; };
+
+    // Walks the rack fresh every time (paint/hitTest/mouseDown), rather than
+    // caching, so a knob that's moved (layout change, scroll) or been
+    // removed since arming is never stale.
+    std::vector<Target> collectTargets() const
+    {
+        std::vector<Target> out;
+        auto* parent = getParentComponent();
+        if (parent == nullptr) return out;
+
+        std::function<void (juce::Component&)> visit = [&] (juce::Component& c)
+        {
+            if (c.getProperties().contains ("modParamID"))
+                out.push_back ({ getLocalArea (&c, c.getLocalBounds()),
+                                  c.getProperties()["modParamID"].toString() });
+            for (int i = 0; i < c.getNumChildComponents(); ++i)
+                visit (*c.getChildComponent (i));
+        };
+        visit (*parent);
+        return out;
+    }
+
+    void timerCallback() override
+    {
+        const bool shouldShow = processor.modTargetPick.active;
+        if (shouldShow != isVisible())
+        {
+            setVisible (shouldShow);
+            if (shouldShow) { setBounds (getParentComponent()->getLocalBounds()); toFront (false); }
+        }
+        if (shouldShow) repaint(); // knob highlight rects don't move on their own, but the rack layout underneath can
+    }
+};
+
+//==============================================================================
+/** Small LED-style dot that lights up briefly whenever genuinely inbound
+    MIDI arrives (see ViolentAudioProcessor::lastMidiActivityMs), polled via
+    timer rather than needing the audio thread to push UI updates. */
+class MidiActivityLight : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    explicit MidiActivityLight (ViolentAudioProcessor& p) : processor (p) { startTimerHz (30); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto now  = juce::Time::getMillisecondCounter();
+        const auto last = processor.lastMidiActivityMs.load (std::memory_order_relaxed);
+        const bool lit  = (now - last) < 150;
+
+        auto b = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (lit ? ViolentColours::green : ViolentColours::overlay);
+        g.fillEllipse (b);
+        g.setColour (ViolentColours::subtext);
+        g.drawEllipse (b, 1.0f);
+    }
+
+private:
+    ViolentAudioProcessor& processor;
     void timerCallback() override { repaint(); }
 };
 

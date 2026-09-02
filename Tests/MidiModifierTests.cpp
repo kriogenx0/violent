@@ -161,6 +161,42 @@ public:
             clearModifiers (proc);
             expect (! proc.isArpEnabled (0));
         }
+
+        beginTest ("Octave modifier in Replace mode transposes in place, same as PitchShift's own octave sub-param");
+        {
+            const int slot = addModifier (proc, MidiModType::Octave, 0);
+            proc.midiModifiers[(size_t) slot].octaveAddMode = false;
+            setInt (proc, ParamIDs::midiModOctave (slot), 2);
+            expectEquals (proc.applyMidiModifier (0, 60), 84); // +2 octaves = +24 semitones
+
+            setInt (proc, ParamIDs::midiModOctave (slot), -1);
+            expectEquals (proc.applyMidiModifier (0, 60), 48);
+            clearModifiers (proc);
+        }
+
+        beginTest ("Octave modifier in Add mode leaves the note untouched here (doubling is handled in processMidi)");
+        {
+            const int slot = addModifier (proc, MidiModType::Octave, 0);
+            proc.midiModifiers[(size_t) slot].octaveAddMode = true;
+            setInt (proc, ParamIDs::midiModOctave (slot), 2);
+            expectEquals (proc.applyMidiModifier (0, 60), 60);
+            clearModifiers (proc);
+        }
+
+        beginTest ("Octave modifier's Add/Replace mode round-trips through save/restore state");
+        {
+            const int slot = addModifier (proc, MidiModType::Octave, 0);
+            proc.midiModifiers[(size_t) slot].octaveAddMode = true;
+
+            juce::MemoryBlock state;
+            proc.getStateInformation (state);
+            clearModifiers (proc);
+            proc.setStateInformation (state.getData(), (int) state.getSize());
+
+            expect (proc.numMidiModifiers == 1 && proc.midiModifiers[0].type == MidiModType::Octave);
+            expect (proc.midiModifiers[0].octaveAddMode, "Add mode should survive a save/restore round-trip");
+            clearModifiers (proc);
+        }
     }
 };
 

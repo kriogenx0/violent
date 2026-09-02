@@ -44,6 +44,7 @@ private:
     ViolentAudioProcessor& processor;
     juce::TextButton headerBtn;
     SpectrumAnalyzerView analyzerView;
+    LevelMeter masterMeter;
     bool collapsed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpectrumAnalyzerPanel)

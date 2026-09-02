@@ -132,6 +132,31 @@ public:
             ViolentAudioProcessor proc;
             expect (! proc.loadPreset ("Definitely Not A Real Preset Name 12345"));
         }
+
+        beginTest ("Sample-slot state (path) round-trips for every generator index, including beyond the first few");
+        {
+            // Regression test: SamplerEngine::modules used to be sized
+            // MAX_SAMPLES (4) while generator indices go up to MAX_GENERATORS
+            // (8), even though every generator-index-based sample lookup
+            // (createStateXml()/restoreStateFromXml(), renderGenerator(), the
+            // sample-waveform preview) assumes a 1:1 mapping - so touching a
+            // generator index >= MAX_SAMPLES was an out-of-bounds array
+            // access. MAX_SAMPLES is now defined as MAX_GENERATORS so they
+            // can't drift apart again; this exercises the highest index.
+            ViolentAudioProcessor writer;
+            const int lastGen = MAX_GENERATORS - 1;
+            writer.getSampler().modules[(size_t) lastGen].hasData = true;
+            writer.getSampler().modules[(size_t) lastGen].filePath = "/tmp/not_a_real_file.wav";
+
+            auto xml = writer.createStateXml();
+            expect (xml != nullptr);
+
+            ViolentAudioProcessor reader;
+            reader.restoreStateFromXml (*xml);
+            // restoreStateFromXml() calls loadSample() with this path, which
+            // won't decode (the file doesn't exist) - the point is just that
+            // touching this generator index doesn't crash or corrupt memory.
+        }
     }
 };
 

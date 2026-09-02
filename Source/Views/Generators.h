@@ -14,9 +14,11 @@ class GeneratorCard : public juce::Component
 {
 public:
     static constexpr int HEADER_H     = 36;
+    static constexpr int PREVIEW_H    = 64;   // waveform/sample preview row
     static constexpr int SOURCE_H     = 96;   // source knobs row
     static constexpr int WAVESHAPE_H  = 76;   // detune/phase/pw/unison/spread box
-    static constexpr int ADSR_H       = 76;   // envelope box
+    static constexpr int ADSR_GRAPH_H = 54;   // envelope graph above the ADSR knobs
+    static constexpr int ADSR_H       = 76 + ADSR_GRAPH_H; // envelope box
 
     GeneratorCard (ViolentAudioProcessor& p, int generatorIdx);
     ~GeneratorCard() override;
@@ -39,7 +41,11 @@ private:
     DeleteButton        removeBtn;
     juce::ToggleButton   enableBtn;
     juce::Label          nameLabel;
+
+    // Full-width preview row below the header — the live scope in Synth
+    // mode, the loaded file's outline in Sampler mode.
     WaveformView         waveformView;
+    SampleWaveformView   sampleWaveformView;
 
     // Source section
     juce::TextButton synthModeBtn   { "Synth" };
@@ -67,6 +73,14 @@ private:
     LabelledKnob decKnob { "Decay",   ViolentColours::teal  };
     LabelledKnob susKnob { "Sustain", ViolentColours::blue  };
     LabelledKnob relKnob { "Release", ViolentColours::red   };
+    EnvelopeGraphView adsrGraph { attKnob.slider, decKnob.slider, susKnob.slider, relKnob.slider,
+        [this]
+        {
+            return EnvelopeActivity { processor.generatorEnvActive[(size_t) generator],
+                                       processor.generatorEnvHeld[(size_t) generator],
+                                       processor.generatorEnvStartMs[(size_t) generator],
+                                       processor.generatorEnvReleaseStartMs[(size_t) generator] };
+        } };
 
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -106,8 +120,10 @@ public:
 
 private:
     ViolentAudioProcessor& processor;
+    juce::Label sectionLabel;
     std::array<std::unique_ptr<GeneratorCard>, MAX_GENERATORS> cards;
-    juce::TextButton addBtn { "+ Add Generator" };
+    juce::TextButton addSynthBtn   { "+ Add Synth" };
+    juce::TextButton addSamplerBtn { "+ Add Sampler" };
 
     void rebuild (bool forceRecreate = false);
 

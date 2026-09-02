@@ -53,6 +53,7 @@ private:
     EffectPanel effectPanel;
     MixerPanel mixerPanel;
     SpectrumAnalyzerPanel spectrumPanel;
+    ModTargetPickOverlay pickOverlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScalableRackComponent)
 };

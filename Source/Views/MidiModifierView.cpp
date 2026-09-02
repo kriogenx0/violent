@@ -31,6 +31,15 @@ MidiModifierRow::MidiModifierRow (ViolentAudioProcessor& p, int modSlot)
     addAndMakeVisible (nameLabel);
 
     for (auto* k : { &transposeKnob, &octaveKnob, &arpRateKnob }) addChildComponent (*k);
+    addChildComponent (octaveModeBtn);
+    octaveModeBtn.setClickingTogglesState (true);
+    octaveModeBtn.setToggleState (mm.octaveAddMode, juce::dontSendNotification);
+    octaveModeBtn.onClick = [this]
+    {
+        processor.midiModifiers[(size_t) slot].octaveAddMode = octaveModeBtn.getToggleState();
+        updateOctaveModeLook();
+    };
+    updateOctaveModeLook();
 
     for (const auto& t : { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" })
         keyRootBox.addItem (t, keyRootBox.getNumItems() + 1);
@@ -76,6 +85,11 @@ void MidiModifierRow::updateEnabledLook()
     enableBtn.setButtonText (enableBtn.getToggleState() ? "ON" : "OFF");
 }
 
+void MidiModifierRow::updateOctaveModeLook()
+{
+    octaveModeBtn.setButtonText (octaveModeBtn.getToggleState() ? "Add" : "Replace");
+}
+
 void MidiModifierRow::setAllInvisible()
 {
     transposeKnob.setVisible (false);
@@ -83,6 +97,7 @@ void MidiModifierRow::setAllInvisible()
     arpRateKnob.setVisible (false);
     keyRootBox.setVisible (false);
     keyScaleBox.setVisible (false);
+    octaveModeBtn.setVisible (false);
 }
 
 void MidiModifierRow::showForType (MidiModType t)
@@ -96,15 +111,17 @@ void MidiModifierRow::showForType (MidiModType t)
             keyRootBox.setVisible (true); keyScaleBox.setVisible (true); break;
         case MidiModType::Arp:
             arpRateKnob.setVisible (true); break;
+        case MidiModType::Octave:
+            octaveKnob.setVisible (true); octaveModeBtn.setVisible (true); break;
     }
 }
 
 void MidiModifierRow::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
-    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
-    g.setColour (ViolentColours::overlay);
-    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f, 1.0f);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius);
+    g.setColour (ViolentColours::accent.withAlpha (0.6f));
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius, 1.5f);
 }
 
 void MidiModifierRow::resized()
@@ -129,6 +146,10 @@ void MidiModifierRow::resized()
         case MidiModType::Arp:
             arpRateKnob.setBounds (hdr.removeFromLeft (72).reduced (2, 1));
             break;
+        case MidiModType::Octave:
+            octaveKnob.setBounds (hdr.removeFromLeft (72).reduced (2, 1));
+            octaveModeBtn.setBounds (hdr.removeFromLeft (66).reduced (2, 4));
+            break;
     }
 
     a.removeFromTop (4);
@@ -148,7 +169,7 @@ void MidiModifierRow::resized()
 //==============================================================================
 namespace
 {
-    constexpr MidiModType kAddTypes[NUM_MIDI_MOD_TYPES] = { MidiModType::PitchShift, MidiModType::KeyShift, MidiModType::Arp };
+    constexpr MidiModType kAddTypes[NUM_MIDI_MOD_TYPES] = { MidiModType::PitchShift, MidiModType::KeyShift, MidiModType::Arp, MidiModType::Octave };
 }
 
 MidiModifierPanel::MidiModifierPanel (ViolentAudioProcessor& p) : processor (p)

@@ -1,7 +1,14 @@
 #pragma once
 #include <JuceHeader.h>
+#include "../GeneratorChain.h"
 
-static constexpr int MAX_SAMPLES = 4;
+// One sample slot per generator (SamplerEngine::modules is indexed directly
+// by generator index everywhere - PluginProcessor.cpp's renderGenerator(),
+// createStateXml()/restoreStateFromXml(), and the sample-waveform preview in
+// Generators.cpp/SharedComponents.h all assume this 1:1 mapping) - so this
+// must never be less than MAX_GENERATORS, or those become out-of-bounds
+// array accesses for the generators beyond it.
+static constexpr int MAX_SAMPLES = MAX_GENERATORS;
 
 //==============================================================================
 /** One loaded sample buffer + metadata, used by the unified oscillator/sampler

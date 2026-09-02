@@ -2,6 +2,19 @@
 #include "PluginEditor.h"
 
 //==============================================================================
+namespace
+{
+    // Shared by every Pan parameter (Source Pan and Mixer Pan) so both knobs
+    // read as e.g. "35% L" / "C" / "50% R" instead of a raw -1..1 number.
+    juce::String panStringFromValue (float value, int)
+    {
+        const int percent = juce::roundToInt (std::abs (value) * 100.0f);
+        if (percent == 0) return "C";
+        return juce::String (percent) + "% " + (value < 0.0f ? "L" : "R");
+    }
+}
+
+//==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
 ViolentAudioProcessor::createParameterLayout()
 {
@@ -20,7 +33,8 @@ ViolentAudioProcessor::createParameterLayout()
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
         params.push_back (std::make_unique<AudioParameterFloat> (
             ParamIDs::generatorPan (s),   sn + "Pan",
-            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (panStringFromValue)));
 
         // Source (osc/sampler unified)
         params.push_back (std::make_unique<AudioParameterChoice> (
@@ -46,7 +60,8 @@ ViolentAudioProcessor::createParameterLayout()
             NormalisableRange<float> (0.05f, 0.95f, 0.01f), 0.5f));
         params.push_back (std::make_unique<AudioParameterFloat> (
             ParamIDs::genSrcPan (s),       sn + "Source Pan",
-            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+            NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction (panStringFromValue)));
         params.push_back (std::make_unique<AudioParameterFloat> (
             ParamIDs::genSrcVel (s),       sn + "Source Velocity",
             NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
@@ -339,8 +354,11 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
         {
-            if (heldNoteCount++ == 0)
-                triggerModulatorEnvelopes (true);
+            ++heldNoteCount;
+            // Every note-on retriggers Envelope Modulators from Attack (one-shot
+            // per note), not just the first of a held chord - only Release
+            // waits for the last held note to lift.
+            triggerModulatorEnvelopes (true);
 
             const int   rawNote = msg.getNoteNumber();
             const float vel     = msg.getFloatVelocity();
@@ -367,6 +385,21 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
                     int vi = synthEngine.findFreeVoice (s);
                     if (vi < 0) vi = synthEngine.findVoiceToSteal (s);
                     if (vi >= 0) synthEngine.startVoice (vi, note, vel, s, generatorDSP[(size_t) s].osc);
+
+                    // "Add" mode Octave modifiers layer on an extra voice
+                    // rather than transposing the primary one in place.
+                    for (int m = 0; m < numMidiModifiers; ++m)
+                    {
+                        const auto& mm = midiModifiers[(size_t) m];
+                        if (mm.enabled && mm.type == MidiModType::Octave && mm.octaveAddMode && mm.routing[(size_t) s])
+                        {
+                            const int octave = static_cast<int> (apvts.getRawParameterValue (ParamIDs::midiModOctave (m))->load());
+                            const int doubledNote = juce::jlimit (0, 127, note + octave * 12);
+                            int vi2 = synthEngine.findFreeVoice (s);
+                            if (vi2 < 0) vi2 = synthEngine.findVoiceToSteal (s);
+                            if (vi2 >= 0) synthEngine.startVoice (vi2, doubledNote, vel, s, generatorDSP[(size_t) s].osc);
+                        }
+                    }
                 }
             }
         }
@@ -393,7 +426,20 @@ void ViolentAudioProcessor::processMidi (const juce::MidiBuffer& midi)
                     }
                 }
                 if (! anyArp)
+                {
                     synthEngine.stopNoteForGenerator (s, note);
+
+                    for (int m = 0; m < numMidiModifiers; ++m)
+                    {
+                        const auto& mm = midiModifiers[(size_t) m];
+                        if (mm.enabled && mm.type == MidiModType::Octave && mm.octaveAddMode && mm.routing[(size_t) s])
+                        {
+                            const int octave = static_cast<int> (apvts.getRawParameterValue (ParamIDs::midiModOctave (m))->load());
+                            const int doubledNote = juce::jlimit (0, 127, note + octave * 12);
+                            synthEngine.stopNoteForGenerator (s, doubledNote);
+                        }
+                    }
+                }
             }
         }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
@@ -417,8 +463,22 @@ int ViolentAudioProcessor::applyMidiModifier (int s, int note) const
     for (int m = 0; m < numMidiModifiers; ++m)
     {
         const auto& mm = midiModifiers[(size_t) m];
-        if (mm.enabled && mm.routing[(size_t) s])
-            result = MidiModifier::applyOne (apvts, m, mm.type, result);
+        if (! mm.enabled || ! mm.routing[(size_t) s]) continue;
+
+        if (mm.type == MidiModType::Octave)
+        {
+            // "Replace" transposes in place, same as PitchShift's own octave
+            // sub-param; "Add" leaves the note alone here and instead spawns
+            // an extra doubled voice (see processMidi()).
+            if (! mm.octaveAddMode)
+            {
+                const int octave = static_cast<int> (apvts.getRawParameterValue (ParamIDs::midiModOctave (m))->load());
+                result += octave * 12;
+            }
+            continue;
+        }
+
+        result = MidiModifier::applyOne (apvts, m, mm.type, result);
     }
     return juce::jlimit (0, 127, result);
 }
@@ -483,13 +543,22 @@ std::vector<std::pair<juce::String, juce::String>> ViolentAudioProcessor::getMod
 //==============================================================================
 void ViolentAudioProcessor::triggerModulatorEnvelopes (bool noteOn) noexcept
 {
+    const auto now = juce::Time::getMillisecondCounter();
     for (int m = 0; m < numModulators; ++m)
     {
         auto& mod = modulators[(size_t) m];
         if (! mod.enabled || mod.sourceType != ModulatorSourceType::Envelope) continue;
-        modulatorState[(size_t) m].envStage = noteOn
-            ? ModulatorState::EnvStage::Attack
-            : ModulatorState::EnvStage::Release;
+        auto& st = modulatorState[(size_t) m];
+        if (noteOn)
+        {
+            st.envStage = ModulatorState::EnvStage::Attack;
+            st.envStartMs = now;
+        }
+        else
+        {
+            st.envStage = ModulatorState::EnvStage::Release;
+            st.envReleaseStartMs = now;
+        }
     }
 }
 
@@ -793,10 +862,12 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
 
     // Render all voices belonging to this generator
     bool anyActive = false;
+    bool anyHeld   = false;
     for (auto& v : synthEngine.voices)
     {
         if (!v.active || v.generatorIdx != s) continue;
         anyActive = true;
+        if (! v.released) anyHeld = true;
 
         const float pitchCents = o.detune + (o.octave * 12 + o.semitone) * 100.0f;
         const int   nUni       = o.unisonVoices;
@@ -859,6 +930,20 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
             ring[(size_t) pos] = L[i];
             pos = (pos + 1 == waveformRingSize) ? 0 : pos + 1;
         }
+    }
+
+    // Tracks when this generator's envelope last started (attack) and last
+    // began releasing, so the ADSR graph's playhead can sync to real note
+    // timing instead of looping forever regardless of whether anything is
+    // actually playing.
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        if (anyHeld && ! generatorEnvHeld[(size_t) s])
+            generatorEnvStartMs[(size_t) s] = now;
+        if (! anyHeld && generatorEnvHeld[(size_t) s])
+            generatorEnvReleaseStartMs[(size_t) s] = now;
+        generatorEnvActive[(size_t) s] = anyActive;
+        generatorEnvHeld[(size_t) s]   = anyHeld;
     }
 
     if (!anyActive)
@@ -1018,6 +1103,11 @@ void ViolentAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int numSamples = buffer.getNumSamples();
 
+    // Sampled before renderPreviewMidi() adds its own synthetic notes below,
+    // so the header's activity light reflects genuinely inbound MIDI only.
+    if (! midiMessages.isEmpty())
+        lastMidiActivityMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+
     // Modulators run first so getModulatedValue() sees this block's values
     // when generator/effect params are read below.
     renderModulators (numSamples);
@@ -1137,6 +1227,7 @@ std::unique_ptr<juce::XmlElement> ViolentAudioProcessor::createStateXml()
         xml->setAttribute ("mm" + juce::String(m) + "_name", mm.name);
         xml->setAttribute ("mm" + juce::String(m) + "_type", static_cast<int> (mm.type));
         xml->setAttribute ("mm" + juce::String(m) + "_en",   mm.enabled);
+        xml->setAttribute ("mm" + juce::String(m) + "_octaveAdd", mm.octaveAddMode);
         juce::String routingStr;
         for (bool r : mm.routing) routingStr += r ? "1" : "0";
         xml->setAttribute ("mm" + juce::String(m) + "_routing", routingStr);
@@ -1197,6 +1288,7 @@ void ViolentAudioProcessor::restoreStateFromXml (const juce::XmlElement& xml)
         mm.type    = static_cast<MidiModType> (
             juce::jlimit (0, NUM_MIDI_MOD_TYPES - 1, xml.getIntAttribute ("mm" + juce::String(m) + "_type", 0)));
         mm.enabled = xml.getBoolAttribute ("mm" + juce::String(m) + "_en", true);
+        mm.octaveAddMode = xml.getBoolAttribute ("mm" + juce::String(m) + "_octaveAdd", false);
         const juce::String routingStr = xml.getStringAttribute ("mm" + juce::String(m) + "_routing");
         for (int s = 0; s < MAX_GENERATORS; ++s)
             mm.routing[(size_t) s] = (s < routingStr.length() && routingStr[s] == '1');
@@ -1338,27 +1430,44 @@ void ViolentAudioProcessor::randomizeAll()
         }
     };
 
+    // Structure: how many generators/effects exist, and which types the
+    // effects are. Generator waveform choice is randomized per-generator
+    // below (excluding Sample, same reasoning as before).
+    numActiveGenerators = 1 + rng.nextInt (MAX_GENERATORS);
+    for (int s = 0; s < numActiveGenerators; ++s)
+    {
+        generators[(size_t) s].name = {}; // regenerate to match whatever type gets picked below
+        if (auto* en = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (ParamIDs::generatorEn (s))))
+            *en = true;
+    }
+
+    numEffects = rng.nextInt (MAX_EFFECTS + 1);
+    for (int x = 0; x < numEffects; ++x)
+    {
+        effects[(size_t) x].type    = addableFxTypes[(size_t) rng.nextInt (NUM_ADDABLE_FX_TYPES)];
+        effects[(size_t) x].enabled = true;
+        effects[(size_t) x].name    = {}; // regenerate to match the new type
+    }
+
     for (int s = 0; s < numActiveGenerators; ++s)
     {
         // Synth / source — exclude Sample (index 5) from the random waveform
         // choice, since randomizing onto it without a loaded buffer is silence.
         randC (ParamIDs::genSrcType (s), (int) SourceType::Sample);
-        randF (ParamIDs::genSrcGain (s));
         randI (ParamIDs::genSrcOct  (s));
         randI (ParamIDs::genSrcSemi (s));
         randF (ParamIDs::genSrcDet  (s));
         randF (ParamIDs::genSrcPhase (s));
         randF (ParamIDs::genSrcPW   (s));
-        randF (ParamIDs::genSrcPan  (s));
-        randF (ParamIDs::genSrcVel  (s));
         randI (ParamIDs::genSrcUni  (s));
         randF (ParamIDs::genSrcUniSpread (s));
         randF (ParamIDs::genSrcAtt (s));
         randF (ParamIDs::genSrcDec (s));
         randF (ParamIDs::genSrcSus (s));
         randF (ParamIDs::genSrcRel (s));
-        randF (ParamIDs::generatorLevel (s));
-        randF (ParamIDs::generatorPan   (s));
+        // Gain, Pan (source knob and Mixer), Level, and Velocity sensitivity
+        // are deliberately left alone - the user's manual mix balance
+        // shouldn't get scrambled by a randomize.
     }
 
     // Shared Effect Components — keeps each one's existing type, randomizes

@@ -8,7 +8,7 @@ VST3_DEST      := $(HOME)/Library/Audio/Plug-Ins/VST3
 
 export MACOSX_DEPLOYMENT_TARGET := 13.0
 
-.PHONY: all setup configure build dev install install-au install-vst3 install-standalone run clean dependency-check help
+.PHONY: all setup configure build dev open kill-app close install install-au install-vst3 install-standalone run clean dependency-check help
 
 ## Default: build (Debug) + launch standalone
 all: dependency-check dev
@@ -62,9 +62,23 @@ install-standalone: build
 	cp -r "$(ARTEFACTS_DIR)/Standalone/Violent.app" /Applications/
 	@echo "Installed Standalone → /Applications/Violent.app"
 
-## Build debug version and launch the standalone app
-dev: build
+## Kill any running instance, build debug, then launch the fresh standalone app
+dev: build open
+
+## Kill any running instance (killing first matters: macOS `open` on an
+## already-running app just re-activates the stale process instead of
+## launching the new binary), then launch the standalone app.
+open: kill-app
 	open "$(ARTEFACTS_DIR)/Standalone/Violent.app"
+
+## Kill any running instance of the standalone app, if one is open
+kill-app:
+	@killall Violent 2>/dev/null || true
+
+## Close the running standalone app
+close:
+	@killall Violent 2>/dev/null || true
+	@echo "Closed Violent (if it was running)"
 
 ## Run the Standalone app directly from the build directory
 run: build
@@ -97,6 +111,7 @@ help:
 	@echo "Violent plugin – build targets"
 	@echo "────────────────────────────────────────────"
 	@echo "  make dev                   build (Debug) + launch standalone"
+	@echo "  make open                  kill any running instance + launch standalone"
 	@echo "  make setup                 install deps (brew) + configure + build"
 	@echo "  make                       configure + build (Debug)"
 	@echo "  make configure             run CMake (Debug)"
@@ -109,6 +124,7 @@ help:
 	@echo "  make install-vst3          copy .vst3 to ~/Library"
 	@echo "  make install-standalone    copy .app to /Applications"
 	@echo "  make run                   launch standalone app from build dir"
+	@echo "  make close                 close the running standalone app"
 	@echo "  make install               install both AU and VST3"
 	@echo "  make clean                 delete entire build/ directory"
 	@echo ""

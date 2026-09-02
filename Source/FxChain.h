@@ -26,6 +26,13 @@ inline const char* fxTypeName (FxType t)
     }
 }
 
+// Chorus/Delay/None aren't implemented in the DSP yet, so only these five
+// are ever assigned to an Effect Component - by the "+ <type>" buttons and
+// by ViolentAudioProcessor::randomizeAll().
+static constexpr int NUM_ADDABLE_FX_TYPES = 5;
+inline constexpr std::array<FxType, NUM_ADDABLE_FX_TYPES> addableFxTypes =
+    { FxType::Distortion, FxType::Compressor, FxType::Gate, FxType::Reverb, FxType::Filter };
+
 //==============================================================================
 namespace ParamIDs
 {

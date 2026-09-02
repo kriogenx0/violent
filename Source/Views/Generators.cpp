@@ -4,7 +4,8 @@
 // GeneratorCard
 //==============================================================================
 GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
-    : processor (p), generator (generatorIdx), waveformView (p, generatorIdx)
+    : processor (p), generator (generatorIdx),
+      waveformView (p, generatorIdx), sampleWaveformView (p, generatorIdx)
 {
     auto& gen = processor.generators[(size_t) generator];
 
@@ -30,6 +31,7 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     addAndMakeVisible (nameLabel);
 
     addAndMakeVisible (waveformView);
+    addChildComponent (sampleWaveformView);
 
     // Source type
     for (const auto& t : { "Sine", "Saw", "Square", "Triangle", "Noise", "Sample" })
@@ -58,6 +60,10 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
     sampleFileLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
     addChildComponent (sampleFileLabel);
 
+    if (processor.getSampler().modules[(size_t) generator].hasData)
+        sampleFileLabel.setText (juce::File (processor.getSampler().modules[(size_t) generator].filePath).getFileName(),
+                                  juce::dontSendNotification);
+
     for (auto* l : { &sourceLabel, &waveShapeLabel, &adsrLabel })
     {
         l->setColour (juce::Label::textColourId, ViolentColours::subtext);
@@ -72,6 +78,7 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
                      &detKnob, &phaseKnob, &pwKnob, &uniKnob, &uniSpreadKnob,
                      &attKnob, &decKnob, &susKnob, &relKnob })
         addAndMakeVisible (*k);
+    addAndMakeVisible (adsrGraph);
 
     gainKnob      .attachTo (processor.apvts, ParamIDs::genSrcGain      (generator));
     panKnob       .attachTo (processor.apvts, ParamIDs::genSrcPan       (generator));
@@ -94,6 +101,9 @@ GeneratorCard::GeneratorCard (ViolentAudioProcessor& p, int generatorIdx)
         srcTypeBox.setVisible      (! isSample);
         loadSampleBtn.setVisible   (isSample);
         sampleFileLabel.setVisible (isSample);
+        waveformView.setVisible       (! isSample);
+        sampleWaveformView.setVisible (  isSample);
+        if (isSample) sampleWaveformView.refresh();
 
         synthModeBtn.setToggleState   (! isSample, juce::dontSendNotification);
         samplerModeBtn.setToggleState (  isSample, juce::dontSendNotification);
@@ -120,21 +130,22 @@ void GeneratorCard::openFilePicker()
             {
                 processor.loadSample (generator, f);
                 sampleFileLabel.setText (f.getFileName(), juce::dontSendNotification);
+                sampleWaveformView.refresh();
             }
         });
 }
 
 int GeneratorCard::preferredHeight() const noexcept
 {
-    return HEADER_H + SOURCE_H + WAVESHAPE_H + ADSR_H + 64;
+    return HEADER_H + PREVIEW_H + 8 + SOURCE_H + WAVESHAPE_H + ADSR_H + 64;
 }
 
 void GeneratorCard::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::overlay);
-    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius);
     g.setColour (ViolentColours::accent.withAlpha (0.6f));
-    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 8.0f, 1.5f);
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius, 1.5f);
 
     g.setColour (ViolentColours::surface);
     g.fillRoundedRectangle (waveShapeBoxBounds.toFloat().reduced (2.0f), 5.0f);
@@ -162,7 +173,13 @@ void GeneratorCard::resized()
         loadSampleBtn.setBounds (hdr.removeFromLeft (70).reduced (2, 4));
         sampleFileLabel.setBounds (hdr.removeFromLeft (110).reduced (2, 4));
     }
-    waveformView.setBounds (hdr.reduced (6, 4));
+
+    a.removeFromTop (4);
+
+    // Full-width waveform/sample preview
+    auto previewArea = a.removeFromTop (PREVIEW_H);
+    waveformView.setBounds (previewArea);
+    sampleWaveformView.setBounds (previewArea);
 
     a.removeFromTop (4);
 
@@ -195,6 +212,8 @@ void GeneratorCard::resized()
     auto adsrOuter = a.removeFromTop (ADSR_H);
     adsrBoxBounds = adsrOuter;
     auto adsrInner = adsrOuter.reduced (8, 6);
+    adsrGraph.setBounds (adsrInner.removeFromTop (ADSR_GRAPH_H));
+    adsrInner.removeFromTop (4);
     const int aw = adsrInner.getWidth() / 4;
     attKnob.setBounds (adsrInner.removeFromLeft (aw).reduced (2, 1));
     decKnob.setBounds (adsrInner.removeFromLeft (aw).reduced (2, 1));
@@ -207,14 +226,38 @@ void GeneratorCard::resized()
 //==============================================================================
 GeneratorPanel::GeneratorPanel (ViolentAudioProcessor& p) : processor (p)
 {
-    addAndMakeVisible (addBtn);
-    addBtn.onClick = [this]
+    sectionLabel.setText ("GENERATORS", juce::dontSendNotification);
+    sectionLabel.setColour (juce::Label::textColourId, ViolentColours::subtext);
+    sectionLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f).withStyle ("Bold")));
+    addAndMakeVisible (sectionLabel);
+
+    addAndMakeVisible (addSynthBtn);
+    addSynthBtn.onClick = [this]
     {
         if (processor.numActiveGenerators >= MAX_GENERATORS) return;
-        ++processor.numActiveGenerators;
+        const int idx = processor.numActiveGenerators++;
+        if (auto* p2 = dynamic_cast<juce::AudioParameterBool*> (
+                processor.apvts.getParameter (ParamIDs::generatorEn (idx))))
+            *p2 = true;
         rebuild();
         if (onLayoutChanged) onLayoutChanged();
     };
+
+    addAndMakeVisible (addSamplerBtn);
+    addSamplerBtn.onClick = [this]
+    {
+        if (processor.numActiveGenerators >= MAX_GENERATORS) return;
+        const int idx = processor.numActiveGenerators++;
+        if (auto* p2 = dynamic_cast<juce::AudioParameterChoice*> (
+                processor.apvts.getParameter (ParamIDs::genSrcType (idx))))
+            *p2 = (int) SourceType::Sample;
+        if (auto* p3 = dynamic_cast<juce::AudioParameterBool*> (
+                processor.apvts.getParameter (ParamIDs::generatorEn (idx))))
+            *p3 = true;
+        rebuild();
+        if (onLayoutChanged) onLayoutChanged();
+    };
+
     rebuild();
 }
 
@@ -266,7 +309,7 @@ void GeneratorPanel::rebuild (bool forceRecreate)
 
 int GeneratorPanel::preferredHeight() const noexcept
 {
-    int h = 8;
+    int h = 8 + 24; // section label
     for (int s = 0; s < processor.numActiveGenerators; ++s)
         if (cards[(size_t) s]) h += cards[(size_t) s]->preferredHeight() + 8;
     h += 40; // add button
@@ -276,6 +319,7 @@ int GeneratorPanel::preferredHeight() const noexcept
 void GeneratorPanel::resized()
 {
     auto a = getLocalBounds().reduced (8, 4);
+    sectionLabel.setBounds (a.removeFromTop (24));
     for (int s = 0; s < processor.numActiveGenerators; ++s)
     {
         if (!cards[(size_t) s]) continue;
@@ -283,7 +327,14 @@ void GeneratorPanel::resized()
         cards[(size_t) s]->setBounds (a.removeFromTop (h));
         a.removeFromTop (8);
     }
-    if (processor.numActiveGenerators < MAX_GENERATORS)
-        addBtn.setBounds (a.removeFromTop (32).reduced (4, 2));
-    addBtn.setVisible (processor.numActiveGenerators < MAX_GENERATORS);
+    const bool canAdd = processor.numActiveGenerators < MAX_GENERATORS;
+    if (canAdd)
+    {
+        auto row = a.removeFromTop (32).reduced (4, 2);
+        const int w = row.getWidth() / 2;
+        addSynthBtn.setBounds   (row.removeFromLeft (w).reduced (2, 0));
+        addSamplerBtn.setBounds (row.reduced (2, 0));
+    }
+    addSynthBtn.setVisible   (canAdd);
+    addSamplerBtn.setVisible (canAdd);
 }

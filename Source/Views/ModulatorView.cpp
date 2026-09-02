@@ -36,6 +36,8 @@ ModulatorRow::ModulatorRow (ViolentAudioProcessor& p, int modSlot)
     for (auto* k : { &lfoRateKnob, &envAttKnob, &envDecKnob, &envSusKnob, &envRelKnob })
         addChildComponent (*k);
     addChildComponent (lfoShapeBox);
+    addChildComponent (lfoGraph);
+    addChildComponent (envGraph);
 
     for (const auto& s : { "Sine", "Triangle", "Square", "Saw" })
         lfoShapeBox.addItem (s, lfoShapeBox.getNumItems() + 1);
@@ -54,43 +56,44 @@ ModulatorRow::ModulatorRow (ViolentAudioProcessor& p, int modSlot)
     targetLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (11.0f)));
     addAndMakeVisible (targetLabel);
 
-    targetBox.setRepaintsOnMouseActivity (true);
-    targetBox.setScrollWheelEnabled (false);
-    addAndMakeVisible (targetBox);
-    rebuildTargetBox();
-    targetBox.onChange = [this]
+    crosshairBtn.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xE2\x8C\x96")) + " Pick");
+    crosshairBtn.onClick = [this]
     {
-        const int sel = targetBox.getSelectedId();
-        if (sel <= 1)
+        processor.modTargetPick.active = true;
+        processor.modTargetPick.onPick = [this] (const juce::String& paramID)
         {
-            processor.modulators[(size_t) slot].targetParamID = {};
-            return;
-        }
-        const auto params = processor.getModulatableParameters();
-        const int idx = sel - 2;
-        if (idx >= 0 && idx < (int) params.size())
-            processor.modulators[(size_t) slot].targetParamID = params[(size_t) idx].first;
+            processor.modulators[(size_t) slot].targetParamID = paramID;
+            updateTargetLabel();
+        };
     };
+    addAndMakeVisible (crosshairBtn);
+
+    targetNameLabel.setColour (juce::Label::textColourId, ViolentColours::text);
+    targetNameLabel.setFont (juce::Font (juce::FontOptions().withName ("SF Pro Text").withHeight (12.0f)));
+    addAndMakeVisible (targetNameLabel);
+    updateTargetLabel();
 
     showForSource (mod.sourceType);
 }
 
-void ModulatorRow::rebuildTargetBox()
+void ModulatorRow::updateTargetLabel()
 {
-    targetBox.clear (juce::dontSendNotification);
-    targetBox.addItem ("(none)", 1);
-
-    const auto params = processor.getModulatableParameters();
     const auto& target = processor.modulators[(size_t) slot].targetParamID;
-    int selectedId = 1;
-    for (int i = 0; i < (int) params.size(); ++i)
+    if (target.isEmpty())
     {
-        const int id = i + 2;
-        targetBox.addItem (params[(size_t) i].second, id);
-        if (params[(size_t) i].first == target)
-            selectedId = id;
+        targetNameLabel.setText ("(none)", juce::dontSendNotification);
+        return;
     }
-    targetBox.setSelectedId (selectedId, juce::dontSendNotification);
+
+    for (const auto& param : processor.getModulatableParameters())
+    {
+        if (param.first == target)
+        {
+            targetNameLabel.setText (param.second, juce::dontSendNotification);
+            return;
+        }
+    }
+    targetNameLabel.setText ("(none)", juce::dontSendNotification);
 }
 
 void ModulatorRow::updateEnabledLook()
@@ -103,16 +106,18 @@ void ModulatorRow::showForSource (ModulatorSourceType t)
     const bool isLfo = (t == ModulatorSourceType::LFO);
     lfoRateKnob.setVisible (isLfo);
     lfoShapeBox.setVisible (isLfo);
+    lfoGraph.setVisible (isLfo);
     for (auto* k : { &envAttKnob, &envDecKnob, &envSusKnob, &envRelKnob })
         k->setVisible (! isLfo);
+    envGraph.setVisible (! isLfo);
 }
 
 void ModulatorRow::paint (juce::Graphics& g)
 {
     g.setColour (ViolentColours::surface);
-    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f);
-    g.setColour (ViolentColours::overlay);
-    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), 5.0f, 1.0f);
+    g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius);
+    g.setColour (ViolentColours::accent.withAlpha (0.6f));
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), ViolentColours::cornerRadius, 1.5f);
 }
 
 void ModulatorRow::resized()
@@ -125,6 +130,11 @@ void ModulatorRow::resized()
     nameLabel.setBounds (hdr.removeFromLeft (140).reduced (4, 3));
 
     a.removeFromTop (2);
+    auto graphRow = a.removeFromTop (58);
+    lfoGraph.setBounds (graphRow);
+    envGraph.setBounds (graphRow);
+
+    a.removeFromTop (4);
     auto controls = a.removeFromTop (58);
     amountKnob.setBounds (controls.removeFromLeft (72).reduced (2, 1));
 
@@ -144,7 +154,8 @@ void ModulatorRow::resized()
     a.removeFromTop (4);
     auto targetRow = a.removeFromTop (30);
     targetLabel.setBounds (targetRow.removeFromLeft (50));
-    targetBox.setBounds (targetRow.reduced (2, 3));
+    crosshairBtn.setBounds (targetRow.removeFromLeft (60).reduced (2, 3));
+    targetNameLabel.setBounds (targetRow.reduced (6, 3));
 }
 
 //==============================================================================

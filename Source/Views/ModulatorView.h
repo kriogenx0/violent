@@ -12,7 +12,7 @@
 class ModulatorRow : public juce::Component
 {
 public:
-    static constexpr int ROW_H = 132;
+    static constexpr int ROW_H = 194;
 
     ModulatorRow (ViolentAudioProcessor& p, int slot);
 
@@ -34,20 +34,31 @@ private:
 
     LabelledKnob   lfoRateKnob { "Rate", ViolentColours::yellow };
     juce::ComboBox lfoShapeBox;
+    LfoGraphView   lfoGraph { lfoRateKnob.slider, lfoShapeBox };
 
     LabelledKnob envAttKnob { "Attack",  ViolentColours::green };
     LabelledKnob envDecKnob { "Decay",   ViolentColours::teal  };
     LabelledKnob envSusKnob { "Sustain", ViolentColours::blue  };
     LabelledKnob envRelKnob { "Release", ViolentColours::red   };
+    EnvelopeGraphView envGraph { envAttKnob.slider, envDecKnob.slider, envSusKnob.slider, envRelKnob.slider,
+        [this]
+        {
+            const auto& st = processor.modulatorState[(size_t) slot];
+            using Stage = ViolentAudioProcessor::ModulatorState::EnvStage;
+            return EnvelopeActivity { st.envStage != Stage::Idle,
+                                       st.envStage != Stage::Idle && st.envStage != Stage::Release,
+                                       st.envStartMs, st.envReleaseStartMs };
+        } };
 
-    juce::Label    targetLabel;
-    juce::ComboBox targetBox;
+    juce::Label      targetLabel;
+    juce::TextButton crosshairBtn;
+    juce::Label      targetNameLabel;
 
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     std::unique_ptr<CA> lfoShapeAtt;
 
     void updateEnabledLook();
-    void rebuildTargetBox();
+    void updateTargetLabel();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ModulatorRow)
 };

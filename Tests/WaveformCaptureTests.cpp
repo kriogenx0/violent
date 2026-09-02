@@ -56,6 +56,32 @@ public:
             expect (proc.waveformRingWritePos[0] >= 0
                         && proc.waveformRingWritePos[0] < proc.waveformRingSize);
         }
+
+        beginTest ("lastMidiActivityMs is stamped by genuinely inbound MIDI, not by the preview player's synthetic notes");
+        {
+            // A fresh instance, rather than the shared proc above, so the
+            // "never touched yet" starting state (0) is reliable regardless
+            // of what earlier tests in this file already fed it.
+            ViolentAudioProcessor freshProc;
+            freshProc.setPlayConfigDetails (0, 2, sampleRate, blockSize);
+            freshProc.prepareToPlay (sampleRate, blockSize);
+            expectEquals ((juce::int64) freshProc.lastMidiActivityMs.load(), (juce::int64) 0);
+
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            juce::MidiBuffer empty;
+            freshProc.previewActive.store (true, std::memory_order_relaxed);
+            freshProc.processBlock (buffer, empty); // preview-only block, no real inbound MIDI
+
+            expectEquals ((juce::int64) freshProc.lastMidiActivityMs.load(), (juce::int64) 0,
+                    "the preview player's synthetic notes must not register as inbound MIDI activity");
+
+            juce::MidiBuffer realNoteOn;
+            realNoteOn.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+            freshProc.processBlock (buffer, realNoteOn);
+
+            expect (freshProc.lastMidiActivityMs.load() > 0,
+                    "a genuinely inbound MIDI message should stamp the activity light's timestamp");
+        }
     }
 };
 

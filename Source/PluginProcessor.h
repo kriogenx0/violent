@@ -121,6 +121,13 @@ public:
         MidiModType type = MidiModType::PitchShift;
         bool enabled = true;
         std::array<bool, MAX_GENERATORS> routing {};
+
+        // Only meaningful for type == Octave: false ("Replace") transposes
+        // the note in place, same as PitchShift's own octave sub-param; true
+        // ("Add") leaves the original note untouched and layers on an extra
+        // voice shifted by the octave amount instead (see
+        // ViolentAudioProcessor::processMidi()).
+        bool octaveAddMode = false;
     };
     int numMidiModifiers = 0;
     std::array<MidiModifierComponent, MAX_MIDI_MODIFIERS> midiModifiers;
@@ -163,9 +170,52 @@ public:
     // musicians most commonly want to modulate.
     std::vector<std::pair<juce::String, juce::String>> getModulatableParameters() const;
 
+    // UI-only: coordinates the crosshair "click a knob to pick it as this
+    // Modulator's target" flow across the whole rack, never touched by the
+    // audio thread. Lives here (like previewActive/spectrumMagnitudesDb)
+    // rather than on some rack Component so any knob/button can arm or read
+    // it without a reference threaded through every intermediate constructor.
+    struct ModTargetPick
+    {
+        bool active = false;
+        std::function<void (const juce::String&)> onPick;
+    };
+    ModTargetPick modTargetPick;
+
     // --- Level metering ---
     std::atomic<float> levelL { 0.0f }, levelR { 0.0f };
     std::array<std::atomic<float>, MAX_GENERATORS> generatorLevelMeter {};
+
+    // --- Envelope activity, for the UI's ADSR graphs (Generator card +
+    // Modulator Envelope source) to sync their playhead to real note
+    // activity instead of looping forever regardless of whether anything is
+    // actually playing. Read directly (no atomics), the same way
+    // waveformRing already is below - a torn read here is a cosmetic
+    // non-issue, not a correctness one.
+    //   active:    any voice still in attack/decay/sustain/release
+    //   held:      any voice still before note-off (attack/decay/sustain) -
+    //              once held goes false while active is still true, the
+    //              generator is releasing.
+    std::array<bool, MAX_GENERATORS> generatorEnvActive {};
+    std::array<bool, MAX_GENERATORS> generatorEnvHeld {};
+    std::array<juce::uint32, MAX_GENERATORS> generatorEnvStartMs {};        // when held last became true
+    std::array<juce::uint32, MAX_GENERATORS> generatorEnvReleaseStartMs {}; // when held last became false
+
+    struct ModulatorState
+    {
+        float lfoPhase = 0.0f;
+        enum class EnvStage { Idle, Attack, Decay, Sustain, Release } envStage = EnvStage::Idle;
+        float envLevel = 0.0f;
+        juce::uint32 envStartMs = 0;        // when this envelope last entered Attack
+        juce::uint32 envReleaseStartMs = 0; // when it last entered Release
+    };
+    std::array<ModulatorState, MAX_MODULATORS> modulatorState;
+
+    // Timestamp (juce::Time::getMillisecondCounter()) of the last genuinely
+    // inbound MIDI message - i.e. sampled before renderPreviewMidi() adds its
+    // own synthetic notes into the block's MIDI buffer - so the header's
+    // activity light reflects real MIDI input, not the preview player.
+    std::atomic<juce::uint32> lastMidiActivityMs { 0 };
 
     // --- Live waveform (raw source output, before effects, for the UI scope) ---
     // Each generator's raw output rolls continuously into a ring buffer sized
@@ -198,11 +248,14 @@ public:
 
     void loadSample (int slotIndex, const juce::File& file);
 
-    // Randomizes every active generator's source/synth settings, plus the
-    // params of every existing Effect Component — keeping each one's chosen
-    // type as-is and only randomizing the sub-params that type actually
-    // uses. Doesn't touch structure (counts, types, or routing) or MIDI
-    // modifiers/EQ.
+    // For the sample-waveform preview in the generator UI.
+    SamplerEngine& getSampler() noexcept { return sampler; }
+
+    // Randomizes how many generators/effects exist, each generator's
+    // waveform + wave-shape/envelope settings, and each effect's type +
+    // type-specific params. Deliberately leaves Gain, Pan, Level, and
+    // Velocity sensitivity alone (the user's manual mix balance), and never
+    // touches routing, MIDI modifiers, or EQ.
     void randomizeAll();
 
 private:
@@ -254,13 +307,6 @@ private:
     void renderModulators (int numSamples);
     void triggerModulatorEnvelopes (bool noteOn) noexcept;
 
-    struct ModulatorState
-    {
-        float lfoPhase = 0.0f;
-        enum class EnvStage { Idle, Attack, Decay, Sustain, Release } envStage = EnvStage::Idle;
-        float envLevel = 0.0f;
-    };
-    std::array<ModulatorState, MAX_MODULATORS> modulatorState;
     std::array<float, MAX_MODULATORS> modulatorOutputs {}; // raw source value, -1..1 (LFO) or 0..1 (Envelope)
     int heldNoteCount = 0;
 

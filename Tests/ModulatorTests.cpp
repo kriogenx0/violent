@@ -1,5 +1,6 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "Views/SharedComponents.h"
 
 namespace
 {
@@ -122,6 +123,41 @@ public:
             for (int i = 0; i < 4; ++i) proc.processBlock (buffer, empty); // let it finish releasing
 
             expectWithinAbsoluteError (proc.getModulatedValue (ParamIDs::genSrcGain (0)), 0.0f, 0.01f);
+        }
+
+        beginTest ("LabelledKnob tags only modulatable params, and highlights purple only while it's an enabled Modulator's target");
+        {
+            ViolentAudioProcessor proc;
+
+            LabelledKnob modulatableKnob ("Gain");
+            modulatableKnob.attachTo (proc.apvts, ParamIDs::genSrcGain (0));
+            expect (modulatableKnob.slider.getProperties().contains ("modParamID"),
+                    "a generator source knob should be tagged as a valid modulation target");
+            expectEquals (modulatableKnob.slider.getProperties()["modParamID"].toString(), ParamIDs::genSrcGain (0));
+
+            LabelledKnob nonModulatableKnob ("Amount");
+            nonModulatableKnob.attachTo (proc.apvts, ParamIDs::modAmount (0));
+            expect (! nonModulatableKnob.slider.getProperties().contains ("modParamID"),
+                    "a modulator's own Amount knob should not be a valid modulation target");
+
+            const auto originalColour = modulatableKnob.slider.findColour (juce::Slider::rotarySliderFillColourId);
+
+            proc.numModulators = 1;
+            proc.modulators[0].enabled = true;
+            proc.modulators[0].targetParamID = ParamIDs::genSrcGain (0);
+
+            // The highlight is driven by LabelledKnob's own 10Hz poll timer, not
+            // pushed synchronously - give it time to fire at least once.
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+
+            constexpr juce::uint32 vibrantPurple = 0xffb350ff;
+            expect (modulatableKnob.slider.findColour (juce::Slider::rotarySliderFillColourId) == juce::Colour (vibrantPurple),
+                    "knob should turn vibrant purple while it's an enabled modulator's target");
+
+            proc.modulators[0].enabled = false;
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+            expect (modulatableKnob.slider.findColour (juce::Slider::rotarySliderFillColourId) == originalColour,
+                    "a disabled modulator's target should not stay highlighted");
         }
     }
 };

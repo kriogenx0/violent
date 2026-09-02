@@ -73,6 +73,7 @@ struct OscSlot
 struct SynthVoice
 {
     bool  active      = false;
+    bool  released    = false; // true once noteOff() has been sent, even while still releasing
     int   note        = -1;
     int   generatorIdx = 0;
     float velocity    = 1.0f;
@@ -84,7 +85,7 @@ struct SynthVoice
     void prepare (double sr) noexcept { adsr.setSampleRate (sr); }
     void reset()  noexcept
     {
-        active = false; note = -1;
+        active = false; released = false; note = -1;
         for (auto& o : osc) o.reset();
         adsr.reset();
     }
@@ -137,6 +138,7 @@ public:
         v.velocity     = velocity;
         v.baseFreqHz   = static_cast<float> (juce::MidiMessage::getMidiNoteInHertz (note));
         v.active       = true;
+        v.released     = false;
 
         for (auto& o : v.osc) o.reset (osc.phase);
         v.adsr.setParams (osc.att, osc.dec, osc.sus, osc.rel);
@@ -147,14 +149,20 @@ public:
     {
         for (auto& v : voices)
             if (v.active && v.note == note)
+            {
                 v.adsr.noteOff();
+                v.released = true;
+            }
     }
 
     void stopNoteForGenerator (int generatorIdx, int note) noexcept
     {
         for (auto& v : voices)
             if (v.active && v.generatorIdx == generatorIdx && v.note == note)
+            {
                 v.adsr.noteOff();
+                v.released = true;
+            }
     }
 
     void allNotesOff() noexcept

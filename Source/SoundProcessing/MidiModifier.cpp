@@ -33,6 +33,11 @@ int MidiModifier::applyOne (const juce::AudioProcessorValueTreeState& apvts, int
         }
         case MidiModType::Arp:
             break;
+        case MidiModType::Octave:
+            // Handled entirely in ViolentAudioProcessor::applyMidiModifier(),
+            // since "Add" mode needs the full MidiModifierComponent (not just
+            // this per-note transform) to spawn a second voice.
+            break;
     }
 
     return juce::jlimit (0, 127, result);
