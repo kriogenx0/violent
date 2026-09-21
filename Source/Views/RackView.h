@@ -73,6 +73,7 @@ public:
     {
         const int rackH = rack.preferredHeight();
         rack.setBounds (0, 0, ScalableRackComponent::BASE_WIDTH, rackH);
+        rack.resized();
         rack.setTransform (juce::AffineTransform::scale (scale));
         setSize (juce::roundToInt (ScalableRackComponent::BASE_WIDTH * scale),
                  juce::roundToInt (rackH * scale));
