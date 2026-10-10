@@ -8,9 +8,9 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
 {
     setLookAndFeel (&laf);
     // Width is fixed (only the zoom buttons change it, not dragging or the
-    // native maximize button) — see updateHeight(), which re-pins the resize
-    // limits' width every time it runs. Height is freely resizable, including
-    // via the native macOS maximize button.
+    // native maximize button) — see updateWindowSize(), which re-pins the resize
+    // limits' width whenever the zoom changes. Height is freely resizable,
+    // including via the native macOS maximize button.
     setResizable (true, false);
 
     rackViewport.setViewedComponent (&rackScaler, false);
@@ -74,13 +74,13 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
         processor.randomizeAll();
         rack.refreshFromState();
         minimap.refreshFromState();
-        updateHeight();
+        updateLayout();
     };
     addAndMakeVisible (randomizeBtn);
 
-    rack.onLayoutChanged = [this] { minimap.refreshFromState(); updateHeight(); };
+    rack.onLayoutChanged = [this] { minimap.refreshFromState(); updateLayout(); };
 
-    updateHeight();
+    updateWindowSize();
 }
 
 ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
@@ -89,39 +89,62 @@ ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
     setLookAndFeel (nullptr);
 }
 
-void ViolentAudioProcessorEditor::updateHeight()
+void ViolentAudioProcessorEditor::updateLayout()
+{
+    // The rack scrolls inside rackViewport, so adding/removing/rearranging
+    // components only changes how much there is to scroll - the window never
+    // needs a different size for it, and must not be asked for one here.
+    // Asking for a height the screen can't give a window (see
+    // updateWindowSize()) is clamped by the OS without any notification, which
+    // is what used to leave everything drawn out of step with where it responds
+    // to clicks after adding a component, until the next real resize.
+    rackScaler.updateLayout (uiScale);
+}
+
+void ViolentAudioProcessorEditor::updateWindowSize()
 {
     rackScaler.updateLayout (uiScale);
 
     const int newW = Minimap::WIDTH + juce::roundToInt (ScalableRackComponent::BASE_WIDTH * uiScale);
 
-    // Always fill the available screen height (width stays locked at the
-    // current zoom level) so the window opens, and stays, maximized
-    // vertically rather than shrinking to fit the rack's content — content
-    // taller than the display still scrolls via the rack/nav viewports.
-    const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
-    const int newH = display != nullptr ? display->userArea.getHeight() : HEADER_H + rackScaler.getHeight();
+    // The window opens filling the screen vertically, then keeps whatever
+    // height it's given (free resize/maximize) - so the height is only chosen
+    // here the first time through, and never again on later layout changes.
+    // That first request is the display's whole usable height, which a window
+    // with a title bar can't actually have (the title bar takes part of it), so
+    // as the window is shown the OS trims it to fit and reports the trimmed
+    // size to JUCE - the frame genuinely changes, so that notification does
+    // arrive. Asking for it again once the window is already that tall is
+    // different: the OS clamps the request straight back to the current frame
+    // and, with no frame change, posts nothing.
+    int newH = getHeight();
+
+    if (newH <= 0)
+    {
+        const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+        newH = display != nullptr ? juce::roundToInt (display->userBounds.getHeight()) : HEADER_H + rackScaler.getHeight();
+    }
 
     setResizeLimits (newW, 200, newW, 100000);
 
     if (newW == getWidth() && newH == getHeight())
-    {
-        resized(); // size unchanged, but layout/scale may still need re-applying
+        return;
 
-        // resized() alone doesn't guarantee the rack viewport's content gets
-        // redrawn: content added/removed below the visible fold can leave
-        // Viewport::lastVisibleArea unchanged (its own visible rectangle
-        // didn't move), so Viewport::updateVisibleArea() never repaints -
-        // stale pixels are left on screen at controls' old positions even
-        // though their real (correctly hit-tested) bounds have already
-        // moved, until something else forces a full redraw (e.g. resizing
-        // the window). Force it explicitly instead of relying on that.
-        rackViewport.repaint();
-    }
-    else
-    {
-        setSize (newW, newH); // a real size change forces AppKit to redraw everything anyway
-    }
+    setSize (newW, newH);
+
+    // A native window may decline a resize it can't fit (e.g. a zoomed width
+    // wider than the screen). When the clamped result equals the window's
+    // current size there is no frame-change notification, so JUCE would keep
+    // the size it asked for while the native view stays smaller. ComponentPeer
+    // then scales the painted image down to the native view but not mouse
+    // input, so everything drawn drifts away from where it actually responds
+    // (by an amount that grows down/across the window) until some other resize
+    // happens to re-sync the two. Re-reading the native bounds here adopts
+    // whatever size the window really ended up with. Standalone only: plugin
+    // hosts own their view's size and may apply a resize asynchronously.
+    if (juce::JUCEApplicationBase::isStandaloneApp())
+        if (auto* peer = getPeer())
+            peer->handleMovedOrResized();
 }
 
 void ViolentAudioProcessorEditor::setUiScale (float newScale)
@@ -134,7 +157,7 @@ void ViolentAudioProcessorEditor::setUiScale (float newScale)
     if (juce::approximatelyEqual (newScale, uiScale)) return;
 
     uiScale = newScale;
-    updateHeight();
+    updateWindowSize();
 
     zoomLabel.setText (juce::String (juce::roundToInt (uiScale * 100.0f)) + "%", juce::dontSendNotification);
     zoomLabel.setVisible (true);
@@ -170,7 +193,7 @@ void ViolentAudioProcessorEditor::loadSelectedPreset()
     {
         rack.refreshFromState();
         minimap.refreshFromState();
-        updateHeight();
+        updateLayout();
     }
 }
 

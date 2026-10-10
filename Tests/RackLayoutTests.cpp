@@ -910,6 +910,95 @@ public:
                                   slider, slider, now, downPos, now, 1, true);
             slider->mouseUp (up); // closes the SliderAttachment's change gesture cleanly
         }
+
+        beginTest ("The editor's window stays the same size as its native view through layout changes and zooming");
+        {
+            // Regression test for "after adding a component, the buttons below it are drawn
+            // shifted away from where they respond (more the lower they are) until the window
+            // is resized". The editor used to ask for the display's whole usable height as its
+            // own height on every layout change - more than a window with a title bar can have.
+            // The OS clamped the request back to the window's current frame and, as the frame
+            // hadn't changed, never told JUCE, so the JUCE component stayed taller than its
+            // native view. ComponentPeer then scales what it paints to the native view but not
+            // mouse positions, so the picture drifted away from the clickable areas.
+            //
+            // None of the tests above can see this: it only exists once the editor is inside
+            // a real native window with a title bar, which is what's built here (the same
+            // arrangement the standalone app uses). The window has to be resizable, as the
+            // standalone's is - the OS only trims a resizable window to fit the screen, and
+            // that trimmed window is what makes a later over-tall request get clamped.
+            ViolentAudioProcessor proc;
+            std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());
+
+            juce::DocumentWindow window ("Violent layout test", juce::Colours::black, juce::DocumentWindow::allButtons);
+            window.setUsingNativeTitleBar (true);
+            window.setResizable (true, false);
+            window.setContentNonOwned (editor.get(), true);
+            window.setVisible (true);
+            pumpPendingMessages();
+
+            if (window.getPeer() == nullptr)
+            {
+                logMessage ("Skipping native-window size checks: the test window didn't get a native peer here.");
+            }
+            else
+            {
+                auto expectInSync = [&] (const juce::String& when)
+                {
+                    const auto native = window.getPeer()->getBounds();
+                    const auto juceSize = window.getLocalBounds();
+                    expect (native.getWidth() == juceSize.getWidth() && native.getHeight() == juceSize.getHeight(),
+                            "after " + when + " JUCE thinks the window is " + juce::String (juceSize.getWidth()) + "x"
+                            + juce::String (juceSize.getHeight()) + " but its native view is "
+                            + juce::String (native.getWidth()) + "x" + juce::String (native.getHeight()));
+                };
+
+                // The OS trims an over-tall window as it's first shown and reports the result.
+                expectInSync ("the window was first shown");
+
+                for (const char* label : { "+ Distortion", "+ Compressor", "+ LFO", "+ Add Synth", "+ Pitch Shift" })
+                {
+                    auto* addBtn = findButtonWithText (*editor, label);
+                    expect (addBtn != nullptr, juce::String ("there should be a \"") + label + "\" button");
+                    if (addBtn == nullptr) continue;
+
+                    addBtn->triggerClick();
+                    pumpPendingMessages();
+                    expectInSync (juce::String ("clicking \"") + label + "\"");
+                }
+
+                // Zoom changes the window's width. On a display too narrow for the larger zoom
+                // levels the OS clamps that too, which is the same hole in another dimension.
+                auto* zoomIn  = findButtonWithText (*editor, "+");
+                auto* zoomOut = findButtonWithText (*editor, "-");
+                expect (zoomIn != nullptr && zoomOut != nullptr, "there should be zoom in/out buttons");
+
+                if (zoomIn != nullptr && zoomOut != nullptr)
+                {
+                    for (int i = 0; i < 7; ++i)
+                    {
+                        zoomIn->triggerClick();
+                        pumpPendingMessages();
+                        expectInSync ("zooming in (step " + juce::String (i + 1) + ")");
+                    }
+
+                    for (int i = 0; i < 9; ++i)
+                    {
+                        zoomOut->triggerClick();
+                        pumpPendingMessages();
+                        expectInSync ("zooming out (step " + juce::String (i + 1) + ")");
+                    }
+                }
+
+                // Removal goes through the deferred (callAsync) path.
+                if (auto* deleteBtn = findFirstOfType<DeleteButton> (*editor))
+                {
+                    deleteBtn->triggerClick();
+                    pumpPendingMessages();
+                    expectInSync ("removing a component");
+                }
+            }
+        }
     }
 };
 

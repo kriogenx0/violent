@@ -50,7 +50,13 @@ private:
     void loadSelectedPreset();
     void promptAndSavePreset();
 
-    void updateHeight();
+    // Re-lays out the rack for its current contents/zoom. Never resizes the
+    // window - see the comment on its definition for why that matters.
+    void updateLayout();
+
+    // Sizes the window for the current zoom level (width), and for the screen
+    // (height) the first time only.
+    void updateWindowSize();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ViolentAudioProcessorEditor)
 };
