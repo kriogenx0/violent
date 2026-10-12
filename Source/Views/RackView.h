@@ -76,7 +76,7 @@ public:
         rack.resized();
         rack.setTransform (juce::AffineTransform::scale (scale));
         setSize (juce::roundToInt (ScalableRackComponent::BASE_WIDTH * scale),
-                 juce::roundToInt (rackH * scale));
+                 juce::roundToInt ((float) rackH * scale));
     }
 
 private:

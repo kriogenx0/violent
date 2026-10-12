@@ -591,6 +591,7 @@ void ViolentAudioProcessor::renderModulators (int numSamples)
                 case LfoShape::Triangle: v = 4.0f * std::abs (st.lfoPhase - 0.5f) - 1.0f; break;
                 case LfoShape::Square:   v = st.lfoPhase < 0.5f ? 1.0f : -1.0f; break;
                 case LfoShape::Saw:      v = 2.0f * st.lfoPhase - 1.0f; break;
+                case LfoShape::Sine:
                 default:                 v = std::sin (st.lfoPhase * juce::MathConstants<float>::twoPi); break;
             }
             modulatorOutputs[(size_t) m] = v;
@@ -619,6 +620,7 @@ void ViolentAudioProcessor::renderModulators (int numSamples)
                     st.envLevel -= dt / juce::jmax (0.001f, rel);
                     if (st.envLevel <= 0.0f) { st.envLevel = 0.0f; st.envStage = ModulatorState::EnvStage::Idle; }
                     break;
+                case ModulatorState::EnvStage::Idle:
                 default:
                     st.envLevel = 0.0f;
                     break;
@@ -667,7 +669,7 @@ void ViolentAudioProcessor::renderMidiModifiers (int numSamples)
 
             const float rateSeconds  = apvts.getRawParameterValue (ParamIDs::midiModArpRate (m))->load();
             const int samplesPerStep = juce::jmax (1, static_cast<int> (processSpec.sampleRate * rateSeconds));
-            const int gateSamples    = static_cast<int> (samplesPerStep * 0.7f);
+            const int gateSamples    = static_cast<int> ((float) samplesPerStep * 0.7f);
 
             int samplesProcessed = 0;
             while (samplesProcessed < numSamples)
@@ -869,7 +871,7 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
         anyActive = true;
         if (! v.released) anyHeld = true;
 
-        const float pitchCents = o.detune + (o.octave * 12 + o.semitone) * 100.0f;
+        const float pitchCents = o.detune + (float) (o.octave * 12 + o.semitone) * 100.0f;
         const int   nUni       = o.unisonVoices;
         const float vol        = o.gainLin
                                  * (1.0f - o.velSens * (1.0f - v.velocity));
@@ -882,7 +884,7 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
             for (int u = 0; u < nUni; ++u)
             {
                 const float uSpread = nUni > 1
-                    ? o.unisonSpread * (u / (float)(nUni - 1) - 0.5f) * 2.0f
+                    ? o.unisonSpread * ((float) u / (float) (nUni - 1) - 0.5f) * 2.0f
                     : 0.0f;
 
                 float sample;
@@ -909,8 +911,6 @@ void ViolentAudioProcessor::renderGenerator (int s, juce::AudioBuffer<float>& ma
                 uniR += sample * panR;
             }
 
-            const float out = (uniL > 0.0f || uniR > 0.0f
-                                   ? (uniL + uniR) / (float) nUni : 0.0f);
             L[n] += uniL / (float) nUni * env * vol;
             R[n] += uniR / (float) nUni * env * vol;
         }
@@ -1001,7 +1001,7 @@ void ViolentAudioProcessor::processEffects (juce::AudioBuffer<float>& master, in
                                         apvts.getRawParameterValue (ParamIDs::effectDistType (x))->load());
 
                 *fxdsp.distToneFilter.state = *juce::dsp::IIR::Coefficients<float>::makeLowPass (
-                    processSpec.sampleRate, static_cast<double> (tone));
+                    processSpec.sampleRate, tone);
 
                 for (int ch = 0; ch < effectScratch.getNumChannels(); ++ch)
                 {
@@ -1070,6 +1070,9 @@ void ViolentAudioProcessor::processEffects (juce::AudioBuffer<float>& master, in
                 }
                 break;
             }
+            case FxType::None:
+            case FxType::Chorus:
+            case FxType::Delay:
             default: break;
         }
 
@@ -1182,8 +1185,8 @@ void ViolentAudioProcessor::setEQBand (int i, float gainDB)
 {
     eqBands[(size_t) i].state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter (
         processSpec.sampleRate,
-        static_cast<double> (EQ_FREQUENCIES[i]),
-        static_cast<double> (EQ_Q),
+        EQ_FREQUENCIES[i],
+        EQ_Q,
         juce::Decibels::decibelsToGain (gainDB));
 }
 
@@ -1426,6 +1429,9 @@ void ViolentAudioProcessor::randomizeAll()
             case FxType::Filter:
                 randC (filterType, 4); randF (filterCut); randF (filterRes);
                 break;
+            case FxType::None:
+            case FxType::Chorus:
+            case FxType::Delay:
             default: break;
         }
     };

@@ -4,7 +4,7 @@
 // ViolentAudioProcessorEditor
 //==============================================================================
 ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor& p)
-    : AudioProcessorEditor (p), processor (p), rack (p), minimap (p, rack, rackScaler, rackViewport)
+    : AudioProcessorEditor (p), audioProcessor (p), rack (p), minimap (p, rack, rackScaler, rackViewport)
 {
     setLookAndFeel (&laf);
     // Width is fixed (only the zoom buttons change it, not dragging or the
@@ -31,7 +31,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     previewBtn.setToggleState (false, juce::dontSendNotification);
     previewBtn.onClick = [this]
     {
-        processor.previewActive.store (previewBtn.getToggleState(), std::memory_order_relaxed);
+        audioProcessor.previewActive.store (previewBtn.getToggleState(), std::memory_order_relaxed);
     };
     addAndMakeVisible (previewBtn);
 
@@ -42,7 +42,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
     previewPatternBox.setSelectedItemIndex (0, juce::dontSendNotification);
     previewPatternBox.onChange = [this]
     {
-        processor.setPreviewPattern (previewPatternBox.getSelectedItemIndex());
+        audioProcessor.setPreviewPattern (previewPatternBox.getSelectedItemIndex());
     };
     addAndMakeVisible (previewPatternBox);
 
@@ -71,7 +71,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
 
     randomizeBtn.onClick = [this]
     {
-        processor.randomizeAll();
+        audioProcessor.randomizeAll();
         rack.refreshFromState();
         minimap.refreshFromState();
         updateLayout();
@@ -85,7 +85,7 @@ ViolentAudioProcessorEditor::ViolentAudioProcessorEditor (ViolentAudioProcessor&
 
 ViolentAudioProcessorEditor::~ViolentAudioProcessorEditor()
 {
-    processor.previewActive.store (false, std::memory_order_relaxed);
+    audioProcessor.previewActive.store (false, std::memory_order_relaxed);
     setLookAndFeel (nullptr);
 }
 
@@ -173,12 +173,12 @@ void ViolentAudioProcessorEditor::timerCallback()
 void ViolentAudioProcessorEditor::refreshPresetList()
 {
     presetBox.clear (juce::dontSendNotification);
-    const auto names = processor.getPresetNames();
+    const auto names = audioProcessor.getPresetNames();
     int idToSelect = 0;
     for (int i = 0; i < names.size(); ++i)
     {
         presetBox.addItem (names[i], i + 1);
-        if (names[i] == processor.currentPresetName)
+        if (names[i] == audioProcessor.currentPresetName)
             idToSelect = i + 1;
     }
     presetBox.setSelectedId (idToSelect, juce::dontSendNotification);
@@ -189,7 +189,7 @@ void ViolentAudioProcessorEditor::loadSelectedPreset()
     const auto name = presetBox.getText();
     if (name.isEmpty()) return;
 
-    if (processor.loadPreset (name))
+    if (audioProcessor.loadPreset (name))
     {
         rack.refreshFromState();
         minimap.refreshFromState();
@@ -200,7 +200,7 @@ void ViolentAudioProcessorEditor::loadSelectedPreset()
 void ViolentAudioProcessorEditor::promptAndSavePreset()
 {
     auto* aw = new juce::AlertWindow ("Save Preset", "Enter a name for this preset:", juce::AlertWindow::NoIcon);
-    aw->addTextEditor ("name", processor.currentPresetName.isNotEmpty() ? processor.currentPresetName : "My Preset");
+    aw->addTextEditor ("name", audioProcessor.currentPresetName.isNotEmpty() ? audioProcessor.currentPresetName : "My Preset");
     aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
@@ -209,7 +209,7 @@ void ViolentAudioProcessorEditor::promptAndSavePreset()
         if (result == 1)
         {
             const auto name = aw->getTextEditorContents ("name").trim();
-            if (name.isNotEmpty() && processor.savePreset (name))
+            if (name.isNotEmpty() && audioProcessor.savePreset (name))
                 refreshPresetList();
         }
     }), true);

@@ -72,8 +72,8 @@ public:
         getLookAndFeel().drawButtonBackground (g, *this,
             findColour (juce::TextButton::buttonColourId), highlighted, down);
 
-        auto b = getLocalBounds().toFloat().withSizeKeepingCentre (
-            juce::jmin (getWidth(), getHeight()) * 0.4f, juce::jmin (getWidth(), getHeight()) * 0.4f);
+        const float side = (float) juce::jmin (getWidth(), getHeight()) * 0.4f;
+        auto b = getLocalBounds().toFloat().withSizeKeepingCentre (side, side);
         g.setColour (ViolentColours::red);
         g.drawLine (b.getX(), b.getY(), b.getRight(), b.getBottom(), 1.8f);
         g.drawLine (b.getX(), b.getBottom(), b.getRight(), b.getY(), 1.8f);

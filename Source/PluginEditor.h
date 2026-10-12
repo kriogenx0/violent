@@ -18,7 +18,7 @@ public:
 private:
     static constexpr int HEADER_H = 52;
 
-    ViolentAudioProcessor& processor;
+    ViolentAudioProcessor& audioProcessor;
     ViolentUI laf;
 
     ScalableRackComponent rack;
@@ -27,8 +27,8 @@ private:
     Minimap minimap;
     juce::Viewport navViewport;
 
-    LevelMeter  meter { processor };
-    MidiActivityLight midiLight { processor };
+    LevelMeter  meter { audioProcessor };
+    MidiActivityLight midiLight { audioProcessor };
     juce::TextButton previewBtn;
     juce::ComboBox   previewPatternBox;
 

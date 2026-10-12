@@ -126,6 +126,9 @@ void EffectRow::showForType (FxType t)
             filterTypeSelector.setVisible(true);
             filterCutoffKnob.setVisible(true); filterResKnob.setVisible(true);
             filterResponseView.setVisible(true); break;
+        case FxType::None:
+        case FxType::Chorus:
+        case FxType::Delay:
         default: break;
     }
 }
@@ -185,6 +188,9 @@ void EffectRow::resized()
             filterResponseView.setBounds (controls);
             break;
         }
+        case FxType::None:
+        case FxType::Chorus:
+        case FxType::Delay:
         default: break;
     }
 

@@ -104,6 +104,8 @@ namespace
     };
 }
 
+// JUCE only declares this where its own START_JUCE_APPLICATION macro expands.
+juce::JUCEApplicationBase* juce_CreateApplication();
 juce::JUCEApplicationBase* juce_CreateApplication() { return new ViolentStandaloneApp(); }
 
 #endif // JucePlugin_Build_Standalone
